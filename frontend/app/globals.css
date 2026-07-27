@@ -1,0 +1,178 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ── SIGNAL Design Tokens ─────────────────────────────────────── */
+@theme inline {
+  --color-background:             var(--background);
+  --color-foreground:             var(--foreground);
+  --color-card:                   var(--card);
+  --color-card-foreground:        var(--card-foreground);
+  --color-popover:                var(--popover);
+  --color-popover-foreground:     var(--popover-foreground);
+  --color-primary:                var(--primary);
+  --color-primary-foreground:     var(--primary-foreground);
+  --color-secondary:              var(--secondary);
+  --color-secondary-foreground:   var(--secondary-foreground);
+  --color-muted:                  var(--muted);
+  --color-muted-foreground:       var(--muted-foreground);
+  --color-accent:                 var(--accent);
+  --color-accent-foreground:      var(--accent-foreground);
+  --color-destructive:            var(--destructive);
+  --color-border:                 var(--border);
+  --color-input:                  var(--input);
+  --color-ring:                   var(--ring);
+  --color-signal:                 var(--signal);
+  --color-signal-foreground:      var(--signal-foreground);
+  --color-signal-dim:             var(--signal-dim);
+  --font-sans:                    var(--font-inter);
+  --font-mono:                    var(--font-geist-mono);
+  --radius-sm:   calc(var(--radius) * 0.6);
+  --radius-md:   calc(var(--radius) * 0.8);
+  --radius-lg:   var(--radius);
+  --radius-xl:   calc(var(--radius) * 1.4);
+  --radius-2xl:  calc(var(--radius) * 1.8);
+}
+
+/* ── Light (unused in MVP — dark is default) ──────────────────── */
+:root {
+  --background:             oklch(0.98 0 0);
+  --foreground:             oklch(0.09 0 0);
+  --card:                   oklch(1 0 0);
+  --card-foreground:        oklch(0.09 0 0);
+  --popover:                oklch(1 0 0);
+  --popover-foreground:     oklch(0.09 0 0);
+  --primary:                oklch(0.09 0 0);
+  --primary-foreground:     oklch(0.98 0 0);
+  --secondary:              oklch(0.94 0 0);
+  --secondary-foreground:   oklch(0.09 0 0);
+  --muted:                  oklch(0.94 0 0);
+  --muted-foreground:       oklch(0.48 0 0);
+  --accent:                 oklch(0.94 0 0);
+  --accent-foreground:      oklch(0.09 0 0);
+  --destructive:            oklch(0.58 0.24 27);
+  --border:                 oklch(0.9 0 0);
+  --input:                  oklch(0.9 0 0);
+  --ring:                   oklch(0.6 0 0);
+  --signal:                 oklch(0.62 0.21 259);
+  --signal-foreground:      oklch(0.98 0 0);
+  --signal-dim:             oklch(0.62 0.21 259 / 12%);
+  --radius:                 0.625rem;
+}
+
+/* ── Dark Premium Theme ───────────────────────────────────────── */
+.dark {
+  /* Backgrounds — true deep black stack */
+  --background:             oklch(0.07 0 0);       /* #111  page bg  */
+  --card:                   oklch(0.10 0 0);        /* #181818 card   */
+  --popover:                oklch(0.12 0 0);
+  --secondary:              oklch(0.14 0 0);        /* elevated bg    */
+  --muted:                  oklch(0.14 0 0);
+
+  /* Text */
+  --foreground:             oklch(0.97 0 0);        /* near-white     */
+  --card-foreground:        oklch(0.97 0 0);
+  --popover-foreground:     oklch(0.97 0 0);
+  --muted-foreground:       oklch(0.55 0 0);        /* #888           */
+  --secondary-foreground:   oklch(0.97 0 0);
+  --accent-foreground:      oklch(0.97 0 0);
+  --primary-foreground:     oklch(0.07 0 0);
+
+  /* Accent: pure white buttons */
+  --primary:                oklch(0.97 0 0);
+
+  /* Accent hover/surface */
+  --accent:                 oklch(0.14 0 0);
+
+  /* SIGNAL brand blue */
+  --signal:                 oklch(0.65 0.19 259);   /* #4F8EF7-ish   */
+  --signal-foreground:      oklch(0.97 0 0);
+  --signal-dim:             oklch(0.65 0.19 259 / 10%);
+
+  /* Chrome */
+  --border:                 oklch(1 0 0 / 7%);
+  --input:                  oklch(1 0 0 / 8%);
+  --ring:                   oklch(0.65 0.19 259 / 50%);
+  --destructive:            oklch(0.65 0.22 25);
+
+  /* Radius */
+  --radius:                 0.75rem;
+}
+
+/* ── Base layer ───────────────────────────────────────────────── */
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  html {
+    @apply h-full;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply bg-background text-foreground min-h-full;
+  }
+
+  /* Scrollbar styling */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: oklch(1 0 0 / 12%);
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover { background: oklch(1 0 0 / 20%); }
+}
+
+/* ── Utility classes ──────────────────────────────────────────── */
+@layer utilities {
+  /* Glass card surface */
+  .glass {
+    background: oklch(1 0 0 / 3%);
+    backdrop-filter: blur(16px) saturate(1.4);
+    border: 1px solid oklch(1 0 0 / 7%);
+  }
+
+  /* Signal brand color utilities */
+  .text-signal    { color: var(--signal); }
+  .bg-signal      { background-color: var(--signal); }
+  .bg-signal-dim  { background-color: var(--signal-dim); }
+  .border-signal  { border-color: var(--signal); }
+  .ring-signal    { --tw-ring-color: var(--signal); }
+
+  /* Gradient mesh used in hero */
+  .gradient-mesh {
+    background:
+      radial-gradient(ellipse 80% 50% at 50% -10%, oklch(0.65 0.19 259 / 15%), transparent),
+      radial-gradient(ellipse 60% 40% at 80% 60%, oklch(0.65 0.19 259 / 6%), transparent),
+      radial-gradient(ellipse 50% 60% at 20% 80%, oklch(0.65 0.19 259 / 5%), transparent);
+  }
+
+  /* Score number glow */
+  .score-glow {
+    text-shadow: 0 0 40px oklch(0.65 0.19 259 / 40%);
+  }
+
+  /* Noise texture overlay */
+  .noise::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    border-radius: inherit;
+  }
+
+  /* Subtle border glow on hover */
+  .hover-border-glow {
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .hover-border-glow:hover {
+    border-color: oklch(0.65 0.19 259 / 40%);
+    box-shadow: 0 0 0 1px oklch(0.65 0.19 259 / 15%);
+  }
+}

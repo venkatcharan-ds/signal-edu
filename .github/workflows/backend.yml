@@ -1,0 +1,49 @@
+name: Backend CI
+
+on:
+  push:
+    paths: ["backend/**"]
+  pull_request:
+    paths: ["backend/**"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Lint
+        run: |
+          pip install ruff
+          ruff check app/
+
+      - name: Type check
+        run: |
+          pip install mypy
+          mypy app/ --ignore-missing-imports
+
+      - name: Run tests
+        run: |
+          pip install pytest pytest-asyncio httpx
+          pytest tests/ -v
+        env:
+          DATABASE_URL: sqlite+aiosqlite:///./test.db
+          SUPABASE_URL: https://placeholder.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: placeholder
+          SUPABASE_JWT_SECRET: placeholder
+          GITHUB_CLIENT_ID: placeholder
+          GITHUB_CLIENT_SECRET: placeholder
+          GITHUB_REDIRECT_URI: http://localhost:3000/auth/callback
+          ANTHROPIC_API_KEY: placeholder

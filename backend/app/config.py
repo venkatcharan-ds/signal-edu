@@ -1,0 +1,54 @@
+from functools import lru_cache
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+    )
+
+    # ── App ───────────────────────────────────────────────────────────────────
+    app_name: str = "SIGNAL API"
+    app_version: str = "0.1.0"
+    environment: str = "development"
+    debug: bool = False
+
+    # ── Database ──────────────────────────────────────────────────────────────
+    database_url: str
+    database_pool_size: int = 10
+    database_max_overflow: int = 20
+
+    # ── Supabase ──────────────────────────────────────────────────────────────
+    supabase_url: str
+    supabase_service_role_key: str
+    supabase_jwt_secret: str            # Settings > API > JWT Secret
+
+    # ── GitHub OAuth ──────────────────────────────────────────────────────────
+    github_client_id: str
+    github_client_secret: str
+    github_redirect_uri: str = "http://localhost:3000/auth/callback"
+
+    # ── Anthropic ─────────────────────────────────────────────────────────────
+    anthropic_api_key: str
+    anthropic_model_capability: str = "claude-sonnet-4-5"
+    anthropic_model_recommendation: str = "claude-haiku-4-5-20251001"
+
+    # ── Frontend ──────────────────────────────────────────────────────────────
+    frontend_url: str = "http://localhost:3000"
+
+    # ── Pipeline ──────────────────────────────────────────────────────────────
+    max_repos_to_analyze: int = 20
+    analysis_timeout_seconds: int = 240
+
+    # ── Rate limiting ────────────────────────────────────────────────────────
+    daily_analysis_limit: int = 3       # Max analyses per user per calendar day (UTC)
+
+    # ── Admin ─────────────────────────────────────────────────────────────────
+    admin_api_key: str = ""             # Set in production; left blank = admin disabled
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()
