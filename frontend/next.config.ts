@@ -1,7 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  output: "standalone",
+  // "standalone" is for Docker/Render self-hosted deployments.
+  // Vercel sets VERCEL=1 and handles its own output — skip standalone there.
+  ...(process.env.VERCEL ? {} : { output: "standalone" }),
   images: {
     remotePatterns: [
       { protocol: "https", hostname: "avatars.githubusercontent.com" },
