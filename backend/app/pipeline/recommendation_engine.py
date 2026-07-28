@@ -1,7 +1,7 @@
 """
 Recommendation Engine — Stage 5 of the SIGNAL pipeline.
 
-Uses Claude Haiku to generate exactly 3 prioritised, evidence-backed
+Uses Gemini Flash to generate exactly 3 prioritised, evidence-backed
 recommendations for a student's identified gaps.
 
 Design constraints:
@@ -9,14 +9,15 @@ Design constraints:
 - Each recommendation names a specific project type, references the student's
   existing languages/themes, and specifies an evidence_type so the gap can
   be closed in a measurable way.
-- Haiku is used (not Sonnet) for cost efficiency — the context is small and
+- Flash is used (not Pro) for cost efficiency — the context is small and
   the output schema is tight.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-import anthropic
+from google import genai
+from google.genai import types
 import structlog
 
 from app.pipeline.gap_engine import GapResult
@@ -33,56 +34,58 @@ class RecommendationData:
     evidence_type: str  # "github_repo" | "readme" | "ci_workflow" | "deployment_config" | "pdf"
 
 
-_TOOL: dict = {
-    "name": "record_recommendations",
-    "description": "Record exactly 3 actionable, evidence-backed recommendations for the student.",
-    "input_schema": {
-        "type": "object",
-        "required": ["recommendations"],
-        "additionalProperties": False,
-        "properties": {
-            "recommendations": {
-                "type": "array",
-                "minItems": 3,
-                "maxItems": 3,
-                "items": {
-                    "type": "object",
-                    "required": ["dimension", "priority", "title", "description", "evidence_type"],
-                    "additionalProperties": False,
-                    "properties": {
-                        "dimension": {
-                            "type": "string",
-                            "enum": [
+_REC_FUNCTION = types.FunctionDeclaration(
+    name="record_recommendations",
+    description="Record exactly 3 actionable, evidence-backed recommendations for the student.",
+    parameters=types.Schema(
+        type=types.Type.OBJECT,
+        required=["recommendations"],
+        properties={
+            "recommendations": types.Schema(
+                type=types.Type.ARRAY,
+                min_items=3,
+                max_items=3,
+                items=types.Schema(
+                    type=types.Type.OBJECT,
+                    required=["dimension", "priority", "title", "description", "evidence_type"],
+                    properties={
+                        "dimension": types.Schema(
+                            type=types.Type.STRING,
+                            enum=[
                                 "technical_execution",
                                 "problem_complexity",
                                 "communication_quality",
                             ],
-                        },
-                        "priority": {"type": "integer", "minimum": 1, "maximum": 3},
-                        "title": {
-                            "type": "string",
-                            "maxLength": 120,
-                            "description": "Short action title shown as a card header in the UI.",
-                        },
-                        "description": {
-                            "type": "string",
-                            "description": (
+                        ),
+                        "priority": types.Schema(
+                            type=types.Type.INTEGER,
+                            minimum=1,
+                            maximum=3,
+                        ),
+                        "title": types.Schema(
+                            type=types.Type.STRING,
+                            max_length=120,
+                            description="Short action title shown as a card header in the UI.",
+                        ),
+                        "description": types.Schema(
+                            type=types.Type.STRING,
+                            description=(
                                 "2–4 sentences. Name a specific project idea using the student's "
                                 "existing languages. Explain what gap it closes and why. "
                                 "Do not use generic phrases like 'learn X' without a concrete project."
                             ),
-                        },
-                        "evidence_type": {
-                            "type": "string",
-                            "enum": ["github_repo", "readme", "ci_workflow", "deployment_config", "pdf", "link"],
-                            "description": "The type of artifact the student must produce to close this gap.",
-                        },
+                        ),
+                        "evidence_type": types.Schema(
+                            type=types.Type.STRING,
+                            enum=["github_repo", "readme", "ci_workflow", "deployment_config", "pdf", "link"],
+                            description="The type of artifact the student must produce to close this gap.",
+                        ),
                     },
-                },
-            }
+                ),
+            ),
         },
-    },
-}
+    ),
+)
 
 _SYSTEM_PROMPT = """\
 You are the SIGNAL recommendation engine. You generate specific, actionable improvement \
@@ -102,7 +105,7 @@ RULES:
 class RecommendationEngine:
     """Stage 5 of the SIGNAL pipeline."""
 
-    def __init__(self, client: anthropic.AsyncAnthropic, model: str) -> None:
+    def __init__(self, client: genai.Client, model: str) -> None:
         self._client = client
         self._model = model
 
@@ -124,7 +127,7 @@ class RecommendationEngine:
             te_narrative, pc_narrative, cq_narrative,
         )
 
-        raw = await self._call_claude(context)
+        raw = await self._call_gemini(context)
         recs = raw.get("recommendations", [])
 
         result: list[RecommendationData] = []
@@ -144,23 +147,30 @@ class RecommendationEngine:
         )
         return result
 
-    async def _call_claude(self, context: str) -> dict:
-        response = await self._client.messages.create(
+    async def _call_gemini(self, context: str) -> dict:
+        response = await self._client.aio.models.generate_content(
             model=self._model,
-            max_tokens=1024,
-            system=_SYSTEM_PROMPT,
-            tools=[_TOOL],
-            tool_choice={"type": "tool", "name": "record_recommendations"},
-            messages=[{"role": "user", "content": context}],
+            contents=context,
+            config=types.GenerateContentConfig(
+                system_instruction=_SYSTEM_PROMPT,
+                tools=[types.Tool(function_declarations=[_REC_FUNCTION])],
+                tool_config=types.ToolConfig(
+                    function_calling_config=types.FunctionCallingConfig(
+                        mode="ANY",
+                        allowed_function_names=["record_recommendations"],
+                    )
+                ),
+            ),
         )
 
-        for block in response.content:
-            if block.type == "tool_use" and block.name == "record_recommendations":
-                return block.input  # type: ignore[return-value]
+        for candidate in response.candidates:
+            for part in candidate.content.parts:
+                if part.function_call and part.function_call.name == "record_recommendations":
+                    return dict(part.function_call.args)
 
         raise ValueError(
-            f"Claude Haiku did not return tool_use block. "
-            f"Stop reason: {response.stop_reason}"
+            f"Gemini did not return function_call block. "
+            f"Finish reason: {response.candidates[0].finish_reason if response.candidates else 'unknown'}"
         )
 
 

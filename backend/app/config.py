@@ -30,10 +30,10 @@ class Settings(BaseSettings):
     github_client_secret: str
     github_redirect_uri: str = "http://localhost:3000/auth/callback"
 
-    # ── Anthropic ─────────────────────────────────────────────────────────────
-    anthropic_api_key: str
-    anthropic_model_capability: str = "claude-sonnet-4-5"
-    anthropic_model_recommendation: str = "claude-haiku-4-5-20251001"
+    # ── Gemini ────────────────────────────────────────────────────────────────
+    gemini_api_key: str
+    gemini_model_capability: str = "gemini-2.5-pro"
+    gemini_model_recommendation: str = "gemini-2.5-flash"
 
     # ── Frontend ──────────────────────────────────────────────────────────────
     frontend_url: str = "http://localhost:3000"

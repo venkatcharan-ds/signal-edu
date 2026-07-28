@@ -5,17 +5,17 @@ Hybrid scoring formula per dimension:
   final_score = clamp(objective_component + ai_component, 1.0, 9.0)
 
   objective_component  = deterministic signals → 0.0 – 3.6  (40 % of 9-pt scale)
-  ai_component         = Claude Sonnet analysis → 0.0 – 5.4  (60 % of 9-pt scale)
+  ai_component         = Gemini analysis → 0.0 – 5.4  (60 % of 9-pt scale)
 
 Anti-hallucination cap (§ ARCH-1):
   ai_component is clamped so that final_score cannot exceed
   (objective_component / 3.6 × 9.0) + 1.5
 
   Example: if objective = 1.8 (50 % of max) → ceiling = 4.5 + 1.5 = 6.0
-  Claude may return an ai_component that would yield 7.2 — it is silently
+  Gemini may return an ai_component that would yield 7.2 — it is silently
   capped to 6.0.  The cap value is logged and stored in raw_ai_response.
 
-Claude is called once per analysis with a tool-use schema that forces
+Gemini is called once per analysis with a function-calling schema that forces
 structured JSON output.  A free-form prose field is also requested per
 dimension so the UI can display narrative explanations.
 
@@ -29,7 +29,8 @@ import math
 from dataclasses import dataclass, field
 from decimal import ROUND_HALF_UP, Decimal
 
-import anthropic
+from google import genai
+from google.genai import types
 import structlog
 
 from app.pipeline.evidence_engine import ArtifactText
@@ -296,126 +297,81 @@ def _build_context(signals: UserSignals, artifacts: list[ArtifactText]) -> str:
     return "\n".join(lines)
 
 
-# ── Tool schema for structured Claude output ──────────────────────────────────
+# ── Function schema for structured Gemini output ──────────────────────────────
 
-_SCORING_TOOL: dict = {
-    "name": "record_capability_scores",
-    "description": (
+_CITATION_SCHEMA = types.Schema(
+    type=types.Type.OBJECT,
+    required=["text", "artifact_type", "artifact_ref", "contribution"],
+    properties={
+        "text": types.Schema(
+            type=types.Type.STRING,
+            description="Specific citable fact from the context.",
+        ),
+        "artifact_type": types.Schema(
+            type=types.Type.STRING,
+            enum=["github_repo", "readme", "commit_history", "ci_workflow", "deployment_config", "language_signal"],
+        ),
+        "artifact_ref": types.Schema(
+            type=types.Type.STRING,
+            description="repo full_name or other locator from context.",
+        ),
+        "contribution": types.Schema(
+            type=types.Type.NUMBER,
+            description="Score contribution of this citation (0.0–2.0).",
+        ),
+    },
+)
+
+_DIM_SCHEMA = types.Schema(
+    type=types.Type.OBJECT,
+    required=["ai_score", "confidence", "narrative", "citations"],
+    properties={
+        "ai_score": types.Schema(
+            type=types.Type.NUMBER,
+            minimum=0.0,
+            maximum=5.4,
+            description="AI component only (0–5.4). The objective component (0–3.6) is added server-side.",
+        ),
+        "confidence": types.Schema(
+            type=types.Type.NUMBER,
+            minimum=0.0,
+            maximum=1.0,
+            description="Model confidence in this assessment (0.0–1.0).",
+        ),
+        "narrative": types.Schema(
+            type=types.Type.STRING,
+            description="2–3 sentence explanation citing specific repositories and signals from the context.",
+        ),
+        "citations": types.Schema(
+            type=types.Type.ARRAY,
+            items=_CITATION_SCHEMA,
+        ),
+    },
+)
+
+_SCORING_FUNCTION = types.FunctionDeclaration(
+    name="record_capability_scores",
+    description=(
         "Record the SIGNAL capability scores with mandatory evidence citations. "
         "Every ai_score must be supported by at least two citations from the provided data. "
         "Do not reference repositories, files, or facts not present in the context above."
     ),
-    "input_schema": {
-        "type": "object",
-        "required": ["technical_execution", "problem_complexity", "communication_quality"],
-        "additionalProperties": False,
-        "properties": {
-            "technical_execution": {
-                "type": "object",
-                "required": ["ai_score", "confidence", "narrative", "citations"],
-                "additionalProperties": False,
-                "properties": {
-                    "ai_score": {
-                        "type": "number",
-                        "minimum": 0.0,
-                        "maximum": 5.4,
-                        "description": "AI component only (0–5.4). The objective component (0–3.6) is added server-side.",
-                    },
-                    "confidence": {
-                        "type": "number",
-                        "minimum": 0.0,
-                        "maximum": 1.0,
-                        "description": "Model confidence in this assessment (0.0–1.0).",
-                    },
-                    "narrative": {
-                        "type": "string",
-                        "description": "2–3 sentence explanation citing specific repositories and signals from the context.",
-                    },
-                    "citations": {
-                        "type": "array",
-                        "minItems": 1,
-                        "items": {
-                            "type": "object",
-                            "required": ["text", "artifact_type", "artifact_ref", "contribution"],
-                            "additionalProperties": False,
-                            "properties": {
-                                "text": {"type": "string", "description": "Specific citable fact from the context."},
-                                "artifact_type": {
-                                    "type": "string",
-                                    "enum": ["github_repo", "readme", "commit_history", "ci_workflow", "deployment_config", "language_signal"],
-                                },
-                                "artifact_ref": {"type": "string", "description": "repo full_name or other locator from context."},
-                                "contribution": {"type": "number", "description": "Score contribution of this citation (0.0–2.0)."},
-                            },
-                        },
-                    },
-                },
-            },
-            "problem_complexity": {
-                "type": "object",
-                "required": ["ai_score", "confidence", "narrative", "citations"],
-                "additionalProperties": False,
-                "properties": {
-                    "ai_score": {"type": "number", "minimum": 0.0, "maximum": 5.4},
-                    "confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0},
-                    "narrative": {"type": "string"},
-                    "citations": {
-                        "type": "array",
-                        "minItems": 1,
-                        "items": {
-                            "type": "object",
-                            "required": ["text", "artifact_type", "artifact_ref", "contribution"],
-                            "additionalProperties": False,
-                            "properties": {
-                                "text": {"type": "string"},
-                                "artifact_type": {
-                                    "type": "string",
-                                    "enum": ["github_repo", "readme", "commit_history", "ci_workflow", "deployment_config", "language_signal"],
-                                },
-                                "artifact_ref": {"type": "string"},
-                                "contribution": {"type": "number"},
-                            },
-                        },
-                    },
-                },
-            },
-            "communication_quality": {
-                "type": "object",
-                "required": ["ai_score", "confidence", "narrative", "citations"],
-                "additionalProperties": False,
-                "properties": {
-                    "ai_score": {"type": "number", "minimum": 0.0, "maximum": 5.4},
-                    "confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0},
-                    "narrative": {"type": "string"},
-                    "citations": {
-                        "type": "array",
-                        "minItems": 1,
-                        "items": {
-                            "type": "object",
-                            "required": ["text", "artifact_type", "artifact_ref", "contribution"],
-                            "additionalProperties": False,
-                            "properties": {
-                                "text": {"type": "string"},
-                                "artifact_type": {
-                                    "type": "string",
-                                    "enum": ["github_repo", "readme", "commit_history", "ci_workflow", "deployment_config", "language_signal"],
-                                },
-                                "artifact_ref": {"type": "string"},
-                                "contribution": {"type": "number"},
-                            },
-                        },
-                    },
-                },
-            },
-            "verified_capabilities": {
-                "type": "array",
-                "description": "List of specific, citable capability strings. Max 10. Every entry must reference a repo or artifact from the context.",
-                "items": {"type": "string"},
-                "maxItems": 10,
-            },
+    parameters=types.Schema(
+        type=types.Type.OBJECT,
+        required=["technical_execution", "problem_complexity", "communication_quality"],
+        properties={
+            "technical_execution": _DIM_SCHEMA,
+            "problem_complexity": _DIM_SCHEMA,
+            "communication_quality": _DIM_SCHEMA,
+            "verified_capabilities": types.Schema(
+                type=types.Type.ARRAY,
+                description="List of specific, citable capability strings. Max 10. Every entry must reference a repo or artifact from the context.",
+                items=types.Schema(type=types.Type.STRING),
+                max_items=10,
+            ),
         },
-    },
-}
+    ),
+)
 
 _SYSTEM_PROMPT = """\
 You are the SIGNAL capability scoring engine. Your job is to assess a student developer's \
@@ -444,7 +400,7 @@ class CapabilityEngine:
     Returns three CapabilityScore objects + a list of verified capability strings.
     """
 
-    def __init__(self, client: anthropic.AsyncAnthropic, model: str) -> None:
+    def __init__(self, client: genai.Client, model: str) -> None:
         self._client = client
         self._model = model
 
@@ -476,9 +432,9 @@ class CapabilityEngine:
             cq=round(cq_obj, 3),
         )
 
-        # ── Claude AI components ──────────────────────────────────────────────
+        # ── Gemini AI components ──────────────────────────────────────────────
         model = model_override or self._model
-        raw_response = await self._call_claude(context, model)
+        raw_response = await self._call_gemini(context, model)
 
         te_raw  = raw_response["technical_execution"]
         pc_raw  = raw_response["problem_complexity"]
@@ -543,33 +499,32 @@ class CapabilityEngine:
         )
         return scores, verified
 
-    async def _call_claude(self, context: str, model: str) -> dict:
+    async def _call_gemini(self, context: str, model: str) -> dict:
         """
-        Single Claude tool-use call.  Returns the parsed tool input dict.
+        Single Gemini function-calling call.  Returns the parsed function args dict.
         Raises ValueError on unexpected response shape.
         """
-        response = await self._client.messages.create(
+        response = await self._client.aio.models.generate_content(
             model=model,
-            max_tokens=2048,
-            system=_SYSTEM_PROMPT,
-            tools=[_SCORING_TOOL],
-            tool_choice={"type": "tool", "name": "record_capability_scores"},
-            messages=[
-                {
-                    "role": "user",
-                    "content": (
-                        "Score this student's capabilities based ONLY on the evidence below.\n\n"
-                        + context
-                    ),
-                }
-            ],
+            contents="Score this student's capabilities based ONLY on the evidence below.\n\n" + context,
+            config=types.GenerateContentConfig(
+                system_instruction=_SYSTEM_PROMPT,
+                tools=[types.Tool(function_declarations=[_SCORING_FUNCTION])],
+                tool_config=types.ToolConfig(
+                    function_calling_config=types.FunctionCallingConfig(
+                        mode="ANY",
+                        allowed_function_names=["record_capability_scores"],
+                    )
+                ),
+            ),
         )
 
-        for block in response.content:
-            if block.type == "tool_use" and block.name == "record_capability_scores":
-                return block.input  # type: ignore[return-value]
+        for candidate in response.candidates:
+            for part in candidate.content.parts:
+                if part.function_call and part.function_call.name == "record_capability_scores":
+                    return dict(part.function_call.args)
 
         raise ValueError(
-            f"Claude did not return tool_use block. Stop reason: {response.stop_reason}. "
-            f"Content: {response.content}"
+            f"Gemini did not return function_call block. "
+            f"Finish reason: {response.candidates[0].finish_reason if response.candidates else 'unknown'}"
         )

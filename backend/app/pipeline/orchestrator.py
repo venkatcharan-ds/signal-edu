@@ -17,7 +17,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-import anthropic
+from google import genai
 import structlog
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -81,7 +81,7 @@ async def _run(
     if not user.github_access_token:
         raise ValueError("No GitHub token stored — user must sign in again")
 
-    anthropic_client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+    gemini_client = genai.Client(api_key=settings.gemini_api_key)
 
     # ── Stage 1: GitHub Engine ─────────────────────────────────────────────
     await _set_status(db, job_id, "github_fetch", "Fetching GitHub repositories", 5)
@@ -110,8 +110,8 @@ async def _run(
     await _set_status(db, job_id, "ai_analysis", "Running AI capability analysis", 60)
 
     capability_engine = CapabilityEngine(
-        client=anthropic_client,
-        model=settings.anthropic_model_capability,
+        client=gemini_client,
+        model=settings.gemini_model_capability,
     )
     scores, verified_capabilities = await capability_engine.score_all(signals, artifacts)
 
@@ -165,8 +165,8 @@ async def _run(
     })[:10]
 
     rec_engine = RecommendationEngine(
-        client=anthropic_client,
-        model=settings.anthropic_model_recommendation,
+        client=gemini_client,
+        model=settings.gemini_model_recommendation,
     )
     gap_engine = GapEngine()
 
