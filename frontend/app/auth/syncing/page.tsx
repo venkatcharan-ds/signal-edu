@@ -6,12 +6,14 @@ import { createClient } from "@/lib/supabase";
 import { motion } from "framer-motion";
 
 /**
- * Transient page shown after OAuth code exchange.
+ * Transient loading screen shown after OAuth code exchange.
  *
- * Sends the GitHub provider_token to POST /v1/auth/sync so the backend
- * can call the GitHub API on the user's behalf during analysis.
- * provider_token is only available in the initial session — after a token
- * refresh Supabase drops it, so we must capture it here.
+ * The primary /v1/auth/sync call (with provider_token) is made server-side
+ * in /auth/callback/route.ts, where the raw exchangeCodeForSession response
+ * still contains provider_token before @supabase/ssr drops it from cookies.
+ *
+ * This page fires a secondary sync as a no-op idempotency call and then
+ * redirects to the dashboard.
  */
 export default function SyncingPage() {
   const router = useRouter();

@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
     }
   );
 
-  const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+  const { data: exchangeData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
 
   if (exchangeError) {
     console.error("[auth/callback] exchange error:", exchangeError.message);
@@ -57,6 +57,31 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // Session established — go to the syncing page which creates the DB row
+  // provider_token is only present on the raw exchange response — @supabase/ssr
+  // deliberately does not write it to cookies, so it is lost after this point.
+  // We must call /auth/sync here, server-side, while we still have it.
+  const session = exchangeData?.session;
+  if (session?.provider_token) {
+    const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/v1";
+    try {
+      await fetch(`${apiBase}/auth/sync`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ provider_token: session.provider_token }),
+      });
+    } catch (err) {
+      // Non-fatal: user row will be created lazily by get_current_user,
+      // but github_access_token will be missing until the user re-authenticates.
+      console.error("[auth/callback] backend sync failed:", err);
+    }
+  } else {
+    console.warn("[auth/callback] no provider_token in exchange response — GitHub token will not be stored");
+  }
+
+  // Session established — go to the syncing page (now a no-op for token storage,
+  // kept as a loading screen before the dashboard redirect).
   return NextResponse.redirect(`${origin}${next}`);
 }
