@@ -8,8 +8,11 @@ import { NextResponse, type NextRequest } from "next/server";
  *
  * Without this, tokens expire mid-session and the dashboard layout
  * silently redirects logged-in users to /login.
+ *
+ * Next.js 16 renamed "middleware" to "proxy" — the file must be proxy.ts
+ * and the export must be named `proxy` (or a default export).
  */
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(
