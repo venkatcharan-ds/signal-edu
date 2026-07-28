@@ -9,6 +9,10 @@ engine = create_async_engine(
     pool_size=settings.database_pool_size,
     max_overflow=settings.database_max_overflow,
     echo=settings.debug,
+    # PgBouncer (Supabase Transaction Pooler) does not support prepared statements.
+    # Setting statement_cache_size=0 disables asyncpg's prepared-statement cache so
+    # every query is sent as a simple query rather than a named prepared statement.
+    connect_args={"statement_cache_size": 0},
 )
 
 AsyncSessionLocal = async_sessionmaker(
