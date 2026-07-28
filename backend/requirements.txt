@@ -11,6 +11,7 @@ asyncpg>=0.30.0
 alembic>=1.14.0
 
 # Auth / Security
+PyJWT[cryptography]>=2.8.0
 python-jose[cryptography]>=3.3.0
 httpx>=0.28.1
 

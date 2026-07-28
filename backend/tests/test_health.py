@@ -13,7 +13,7 @@ _ENV_DEFAULTS = {
     "SUPABASE_JWT_SECRET":      "test-jwt-secret-32-chars-minimum!!",
     "GITHUB_CLIENT_ID":         "test-client-id",
     "GITHUB_CLIENT_SECRET":     "test-client-secret",
-    "ANTHROPIC_API_KEY":        "test-anthropic-key",
+    "GEMINI_API_KEY":           "test-gemini-key",
     "ENVIRONMENT":              "test",
     "DEBUG":                    "false",
 }
