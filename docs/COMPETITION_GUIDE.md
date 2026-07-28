@@ -19,7 +19,7 @@
 
 ### Deployed demo
 
-- [ ] Frontend URL accessible without login: `https://signal-edu.vercel.app`
+- [ ] Frontend URL accessible without login: `https://signal-edu-app.vercel.app`
 - [ ] Backend health endpoint responding: `https://YOUR-RENDER-URL.onrender.com/health`
 - [ ] GitHub OAuth sign-in works end-to-end
 - [ ] Analysis pipeline runs and completes
@@ -89,7 +89,7 @@ Cintana's mission connects students from underserved institutions to global oppo
 
 ## Live demo URL
 
-`https://signal-edu.vercel.app`
+`https://signal-edu-app.vercel.app`
 
 Public profile example (no login required):
-`https://signal-edu.vercel.app/profile/[your-github-username]`
+`https://signal-edu-app.vercel.app/profile/[your-github-username]`

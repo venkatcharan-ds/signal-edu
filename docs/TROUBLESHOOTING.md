@@ -10,7 +10,7 @@
 1. GitHub OAuth App → Authorization callback URL must be exactly:
    `https://ybrdpzdxczqditjeyail.supabase.co/auth/v1/callback`
 2. Supabase → Authentication → URL Configuration → Redirect URLs must include:
-   `https://signal-edu.vercel.app/auth/callback`
+   `https://signal-edu-app.vercel.app/auth/callback`
 3. Supabase → Authentication → Providers → GitHub must be enabled with the correct Client ID and Secret.
 
 ---

@@ -39,7 +39,7 @@ git push -u origin main
 
 6. Click **Deploy**
 
-### After first deploy, get your Vercel URL (e.g. `https://signal-edu.vercel.app`)
+### After first deploy, get your Vercel URL (e.g. `https://signal-edu-app.vercel.app`)
 
 ---
 
@@ -60,7 +60,7 @@ Authentication → Providers → GitHub → Enable
 Go to [github.com/settings/applications/new](https://github.com/settings/applications/new):
 
 - **Application name**: `SIGNAL EDU`
-- **Homepage URL**: `https://signal-edu.vercel.app`
+- **Homepage URL**: `https://signal-edu-app.vercel.app`
 - **Authorization callback URL**: `https://ybrdpzdxczqditjeyail.supabase.co/auth/v1/callback`
 
 Copy Client ID + generate Client Secret → paste into Supabase GitHub provider.
@@ -69,8 +69,8 @@ Copy Client ID + generate Client Secret → paste into Supabase GitHub provider.
 
 Authentication → URL Configuration:
 
-- **Site URL**: `https://signal-edu.vercel.app`
-- **Redirect URLs**: add `https://signal-edu.vercel.app/auth/callback`
+- **Site URL**: `https://signal-edu-app.vercel.app`
+- **Redirect URLs**: add `https://signal-edu-app.vercel.app/auth/callback`
 
 ---
 
@@ -105,7 +105,7 @@ GITHUB_REDIRECT_URI=https://ybrdpzdxczqditjeyail.supabase.co/auth/v1/callback
 ANTHROPIC_API_KEY=sk-ant-...
 ANTHROPIC_MODEL_CAPABILITY=claude-sonnet-4-5
 ANTHROPIC_MODEL_RECOMMENDATION=claude-haiku-4-5-20251001
-FRONTEND_URL=https://signal-edu.vercel.app
+FRONTEND_URL=https://signal-edu-app.vercel.app
 DAILY_ANALYSIS_LIMIT=3
 ADMIN_API_KEY=
 ```
@@ -129,7 +129,7 @@ curl https://YOUR-RENDER-URL.onrender.com/health
 curl https://YOUR-RENDER-URL.onrender.com/v1/profiles/YOUR_GITHUB_USERNAME
 
 # Frontend
-open https://signal-edu.vercel.app
+open https://signal-edu-app.vercel.app
 ```
 
 End-to-end flow:

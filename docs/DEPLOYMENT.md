@@ -31,8 +31,8 @@ Project: `https://ybrdpzdxczqditjeyail.supabase.co`
 
 Authentication → URL Configuration:
 
-- **Site URL**: `https://signal-edu.vercel.app`
-- **Redirect URLs**: `https://signal-edu.vercel.app/auth/callback`
+- **Site URL**: `https://signal-edu-app.vercel.app`
+- **Redirect URLs**: `https://signal-edu-app.vercel.app/auth/callback`
 
 ### GitHub OAuth provider
 
@@ -61,7 +61,7 @@ Settings → API:
 | Field | Value |
 |---|---|
 | Application name | `SIGNAL EDU` |
-| Homepage URL | `https://signal-edu.vercel.app` |
+| Homepage URL | `https://signal-edu-app.vercel.app` |
 | Authorization callback URL | `https://ybrdpzdxczqditjeyail.supabase.co/auth/v1/callback` |
 
 Copy Client ID + generate Client Secret → paste into Supabase GitHub provider.
@@ -82,7 +82,7 @@ Copy Client ID + generate Client Secret → paste into Supabase GitHub provider.
 | `NEXT_PUBLIC_SUPABASE_URL` | `https://ybrdpzdxczqditjeyail.supabase.co` |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...` (full key in DEPLOY_NOW.md) |
 | `NEXT_PUBLIC_API_URL` | `https://YOUR-RENDER-URL.onrender.com/v1` ← fill after Render deploy |
-| `NEXT_PUBLIC_SITE_URL` | `https://signal-edu.vercel.app` |
+| `NEXT_PUBLIC_SITE_URL` | `https://signal-edu-app.vercel.app` |
 
 Click **Deploy**.
 
@@ -112,7 +112,7 @@ GITHUB_REDIRECT_URI=https://ybrdpzdxczqditjeyail.supabase.co/auth/v1/callback
 ANTHROPIC_API_KEY=sk-ant-...
 ANTHROPIC_MODEL_CAPABILITY=claude-sonnet-4-5
 ANTHROPIC_MODEL_RECOMMENDATION=claude-haiku-4-5-20251001
-FRONTEND_URL=https://signal-edu.vercel.app
+FRONTEND_URL=https://signal-edu-app.vercel.app
 DAILY_ANALYSIS_LIMIT=3
 ADMIN_API_KEY=
 ```
@@ -131,7 +131,7 @@ After deploy, copy the Render URL (e.g. `https://signal-edu-api.onrender.com`) a
 curl https://YOUR-RENDER-URL.onrender.com/health
 
 # Frontend
-open https://signal-edu.vercel.app
+open https://signal-edu-app.vercel.app
 ```
 
 Full user flow:

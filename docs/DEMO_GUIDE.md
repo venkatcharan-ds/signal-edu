@@ -23,7 +23,7 @@ End-to-end walkthrough for the SIGNAL EDU demo.
 
 ### 0:30 — Landing page (30 seconds)
 
-Navigate to `https://signal-edu.vercel.app`.
+Navigate to `https://signal-edu-app.vercel.app`.
 
 Point out:
 - The tagline: "We surface the talent that credentials hide"
@@ -81,7 +81,7 @@ Navigate to `/gaps`.
 
 ### 7:00 — Public Profile (30 seconds)
 
-Open an incognito tab. Navigate to `https://signal-edu.vercel.app/profile/[your-github-username]`.
+Open an incognito tab. Navigate to `https://signal-edu-app.vercel.app/profile/[your-github-username]`.
 
 - The profile is fully public — shareable URL, no login required
 - Show the scores and evidence
@@ -97,7 +97,7 @@ Open an incognito tab. Navigate to `https://signal-edu.vercel.app/profile/[your-
 
 If the backend is down (Render cold start, etc.):
 
-1. Open the pre-built public profile: `https://signal-edu.vercel.app/profile/[username]`
+1. Open the pre-built public profile: `https://signal-edu-app.vercel.app/profile/[username]`
    - This is statically cached (ISR, 60s) — no backend needed to view it
 2. Show screenshots of the analysis flow (keep in a Google Slides backup deck)
 3. Walk through the architecture diagram in `docs/ARCHITECTURE.md`
@@ -117,7 +117,7 @@ If Vercel is down:
 
 Before presenting, verify:
 
-- [ ] `https://signal-edu.vercel.app` loads in < 2 seconds
+- [ ] `https://signal-edu-app.vercel.app` loads in < 2 seconds
 - [ ] `https://YOUR-RENDER-URL.onrender.com/health` returns `{"status": "ok"}`
 - [ ] Your own profile is pre-generated (`/profile` shows scores, not empty state)
 - [ ] Gap analysis has a selected role with gap data visible

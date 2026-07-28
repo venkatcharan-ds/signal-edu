@@ -20,15 +20,15 @@ Complete these steps **in order**. Each stage has external dependencies that can
 ### 1.3 Register GitHub OAuth App
 1. Go to [github.com/settings/applications/new](https://github.com/settings/applications/new)
 2. **Application name**: `SIGNAL EDU`
-3. **Homepage URL**: `https://signal-edu.vercel.app` (your Vercel domain)
+3. **Homepage URL**: `https://signal-edu-app.vercel.app` (your Vercel domain)
 4. **Authorization callback URL**: the Supabase callback from 1.2
 5. Click Register → copy **Client ID** and generate **Client Secret**
 6. Paste both into Supabase → Auth → Providers → GitHub
 
 ### 1.4 Configure Supabase Auth URLs
 1. Supabase → Auth → URL Configuration
-2. **Site URL**: `https://signal-edu.vercel.app`
-3. **Redirect URLs** → Add: `https://signal-edu.vercel.app/auth/callback`
+2. **Site URL**: `https://signal-edu-app.vercel.app`
+3. **Redirect URLs** → Add: `https://signal-edu-app.vercel.app/auth/callback`
 
 ### 1.5 Run database migrations
 ```bash
@@ -55,7 +55,7 @@ In Railway → Variables, add every variable from `.env.example` under the "Back
 Critical values:
 - `ENVIRONMENT=production`
 - `DEBUG=false`
-- `FRONTEND_URL=https://signal-edu.vercel.app`
+- `FRONTEND_URL=https://signal-edu-app.vercel.app`
 
 ### 2.3 Generate public domain
 Railway → Settings → Networking → Generate Domain
@@ -92,7 +92,7 @@ NEXT_PUBLIC_API_URL=https://signal-backend.up.railway.app/v1
 Edit `frontend/vercel.json` → update the `destination` URL to your actual Railway domain.
 
 ### 3.4 Update CORS in Railway
-Set `FRONTEND_URL` in Railway to the exact Vercel URL that was generated (e.g. `https://signal-edu.vercel.app`).
+Set `FRONTEND_URL` in Railway to the exact Vercel URL that was generated (e.g. `https://signal-edu-app.vercel.app`).
 
 ### 3.5 Deploy and verify
 Vercel auto-deploys on push to main. After deploy:
