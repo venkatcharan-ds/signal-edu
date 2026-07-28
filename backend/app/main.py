@@ -79,3 +79,19 @@ app.include_router(admin.router,     prefix="/v1/admin",     tags=["admin"])
 @app.get("/health", tags=["system"])
 async def health() -> dict:
     return {"status": "ok", "version": settings.app_version, "environment": settings.environment}
+
+
+@app.get("/debug/db", tags=["system"])
+async def debug_db() -> dict:
+    """TEMPORARY: test DB access from a request context. Remove before GA."""
+    from sqlalchemy import text
+    from app.models.user import User
+    from sqlalchemy import select
+    try:
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(text("SELECT count(*) FROM public.users"))
+            count = result.scalar()
+            return {"ok": True, "user_count": count}
+    except Exception as exc:
+        import traceback
+        return {"ok": False, "error": f"{type(exc).__name__}: {exc}", "tb": traceback.format_exc()}
