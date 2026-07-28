@@ -85,13 +85,43 @@ async def health() -> dict:
 async def debug_db() -> dict:
     """TEMPORARY: test DB access from a request context. Remove before GA."""
     from sqlalchemy import text
-    from app.models.user import User
-    from sqlalchemy import select
     try:
         async with AsyncSessionLocal() as session:
             result = await session.execute(text("SELECT count(*) FROM public.users"))
             count = result.scalar()
             return {"ok": True, "user_count": count}
+    except Exception as exc:
+        import traceback
+        return {"ok": False, "error": f"{type(exc).__name__}: {exc}", "tb": traceback.format_exc()}
+
+
+@app.get("/debug/insert", tags=["system"])
+async def debug_insert() -> dict:
+    """TEMPORARY: test ORM INSERT for users table. Remove before GA."""
+    import uuid as uuid_mod
+    from app.models.user import User
+    from sqlalchemy import select
+    test_id = uuid_mod.UUID("ffffffff-ffff-ffff-ffff-ffffffffffff")
+    try:
+        async with AsyncSessionLocal() as session:
+            # Check if test row exists first
+            result = await session.execute(select(User).where(User.id == test_id))
+            existing = result.scalar_one_or_none()
+            if existing:
+                return {"ok": True, "msg": "test row already exists", "username": existing.github_username}
+
+            user = User(
+                id=test_id,
+                github_id=9999999999,
+                github_username="_debug_test_user_",
+                github_email="debug@test.invalid",
+                github_avatar=None,
+                full_name=None,
+            )
+            session.add(user)
+            await session.flush()
+            await session.rollback()  # don't persist the test row
+            return {"ok": True, "msg": "INSERT succeeded (rolled back)"}
     except Exception as exc:
         import traceback
         return {"ok": False, "error": f"{type(exc).__name__}: {exc}", "tb": traceback.format_exc()}
