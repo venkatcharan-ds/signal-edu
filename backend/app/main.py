@@ -62,8 +62,11 @@ app.add_middleware(
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    log.exception("unhandled_exception", path=str(request.url))
-    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+    import traceback
+    tb = traceback.format_exc()
+    log.exception("unhandled_exception", path=str(request.url), traceback=tb)
+    # TEMPORARY: expose exception type for debugging — revert before GA
+    return JSONResponse(status_code=500, content={"detail": "Internal server error", "_debug": f"{type(exc).__name__}: {exc}"})
 
 
 app.include_router(auth.router,      prefix="/v1/auth",      tags=["auth"])
