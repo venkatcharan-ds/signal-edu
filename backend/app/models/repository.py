@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
-    BigInteger, Boolean, DateTime, Index, Integer,
+    BigInteger, Boolean, DateTime, ForeignKey, Index, Integer,
     String, Text, UniqueConstraint, func,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -28,8 +28,7 @@ class Repository(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        # FK defined in migration; avoid redundant DDL in SQLAlchemy for async
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
         index=False,  # covered by idx_repositories_user above
     )
