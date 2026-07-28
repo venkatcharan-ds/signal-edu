@@ -15,6 +15,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_SITE_URL ?? "https://signal-edu.vercel.app"
+  ),
   title: {
     default: "SIGNAL — We surface the talent that credentials hide",
     template: "%s — SIGNAL",
@@ -22,10 +25,17 @@ export const metadata: Metadata = {
   description:
     "Evidence-based capability profiles for students. SIGNAL analyzes your GitHub and projects to reveal the skills your transcript never showed.",
   keywords: ["capability profile", "GitHub analysis", "student portfolio", "skill assessment", "evidence-based"],
+  manifest: "/site.webmanifest",
   openGraph: {
-    title: "SIGNAL",
-    description: "We surface the talent that credentials hide.",
+    title: "SIGNAL — We surface the talent that credentials hide",
+    description: "Evidence-based capability profiles. We surface the talent that credentials hide.",
     type: "website",
+    siteName: "SIGNAL EDU",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "SIGNAL — We surface the talent that credentials hide",
+    description: "Evidence-based capability profiles. We surface the talent that credentials hide.",
   },
 };
 

@@ -1,0 +1,16 @@
+User-agent: *
+Allow: /
+Allow: /profile/
+
+Disallow: /dashboard/
+Disallow: /analysis/
+Disallow: /profile/
+Disallow: /gaps/
+Disallow: /gap-analysis/
+Disallow: /recommendations/
+Disallow: /settings/
+Disallow: /auth/
+Disallow: /admin/
+Disallow: /api/
+
+Sitemap: https://signal-edu.vercel.app/sitemap.xml
