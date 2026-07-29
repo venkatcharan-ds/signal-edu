@@ -49,7 +49,28 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Middleware — order matters: outer → inner on request, inner → outer on response
+# ── MCP authentication middleware ─────────────────────────────────────────────
+# Applied before all other middleware so unauthenticated MCP probes are
+# rejected immediately.  If MCP_API_KEY is empty the endpoint is open
+# (acceptable in local development; always set the key in production).
+
+@app.middleware("http")
+async def mcp_auth_middleware(request: Request, call_next):
+    if request.url.path.startswith("/mcp"):
+        mcp_key = get_settings().mcp_api_key
+        if mcp_key:
+            auth_header = request.headers.get("Authorization", "")
+            token = auth_header.removeprefix("Bearer ").strip()
+            if token != mcp_key:
+                return JSONResponse(
+                    status_code=401,
+                    content={"detail": "MCP authentication required. Provide a valid Bearer token."},
+                )
+    return await call_next(request)
+
+
+# ── Middleware — order matters: outer → inner on request, inner → outer on response
+
 app.add_middleware(RequestIDMiddleware)
 app.add_middleware(
     CORSMiddleware,
@@ -84,3 +105,9 @@ async def health() -> dict:
     return {"status": "ok", "version": settings.app_version, "environment": settings.environment}
 
 
+# ── MCP server — mounted last so REST routes always take precedence ────────────
+# Import is deferred to here so the MCP package is only loaded when needed and
+# all models are already registered with SQLAlchemy before FastMCP initialises.
+from app.mcp.server import mcp_asgi_app  # noqa: E402
+
+app.mount("/mcp", mcp_asgi_app)

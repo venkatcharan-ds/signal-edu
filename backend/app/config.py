@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     # ── Admin ─────────────────────────────────────────────────────────────────
     admin_api_key: str = ""             # Set in production; left blank = admin disabled
 
+    # ── MCP ───────────────────────────────────────────────────────────────────
+    mcp_api_key: str = ""               # Bearer token for /mcp endpoint; empty = open (dev only)
+
 
 @lru_cache
 def get_settings() -> Settings:
