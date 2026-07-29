@@ -47,19 +47,32 @@ async def run_analysis(
     bound = log.bind(job_id=str(job_id))
     bound.info("pipeline.start")
 
+    failure_exc: Exception | None = None
+
     async with session_factory() as db:
         async with db.begin():
             try:
                 await _run(job_id, db, bound)
             except Exception as exc:
                 bound.exception("pipeline.failed", error=str(exc))
-                await _set_status(
-                    db, job_id,
-                    status="failed",
-                    step=str(exc)[:200],
-                    pct=0,
-                    error=str(exc),
-                )
+                failure_exc = exc
+        # db.begin().__aexit__ rolls back automatically if _run raised
+
+    # Record failure in a *fresh* session — the previous transaction may have
+    # been aborted (PostgreSQL InFailedSqlTransaction), so we can't reuse it.
+    if failure_exc is not None:
+        try:
+            async with session_factory() as db2:
+                async with db2.begin():
+                    await _set_status(
+                        db2, job_id,
+                        status="failed",
+                        step=str(failure_exc)[:200],
+                        pct=0,
+                        error=str(failure_exc),
+                    )
+        except Exception as db_exc:
+            bound.exception("pipeline.status_update_failed", error=str(db_exc))
 
 
 async def _run(
@@ -87,7 +100,7 @@ async def _run(
     await _set_status(db, job_id, "github_fetch", "Fetching GitHub repositories", 5)
 
     github_engine = GitHubEngine(
-        token=user.github_access_token,
+        github_token=user.github_access_token,
         max_concurrency=5,
     )
     signals: UserSignals = await github_engine.extract(
