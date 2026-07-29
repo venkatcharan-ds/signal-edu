@@ -160,6 +160,11 @@ async def start_analysis(
     )
     db.add(job)
     await db.flush()
+    # Commit NOW so the row is visible to the background task's separate session.
+    # BackgroundTasks run after the HTTP response is sent but before get_db's
+    # post-yield commit() fires — without this explicit commit the background
+    # task opens a new READ COMMITTED connection and finds no row.
+    await db.commit()
     log.info("analysis.queued", job_id=str(job.id), user=user.github_username)
 
     # Attach quota headers to the 202 response
