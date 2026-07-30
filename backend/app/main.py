@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 import structlog
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 
 from app.config import get_settings
 from app.core.logging import configure_logging
@@ -49,26 +49,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# ── MCP authentication middleware ─────────────────────────────────────────────
-# Applied before all other middleware so unauthenticated MCP probes are
-# rejected immediately.  If MCP_API_KEY is empty the endpoint is open
-# (acceptable in local development; always set the key in production).
-
-@app.middleware("http")
-async def mcp_auth_middleware(request: Request, call_next):
-    if request.url.path.startswith("/mcp"):
-        mcp_key = get_settings().mcp_api_key
-        if mcp_key:
-            auth_header = request.headers.get("Authorization", "")
-            token = auth_header.removeprefix("Bearer ").strip()
-            if token != mcp_key:
-                return JSONResponse(
-                    status_code=401,
-                    content={"detail": "MCP authentication required. Provide a valid Bearer token."},
-                )
-    return await call_next(request)
-
-
 # ── Middleware — order matters: outer → inner on request, inner → outer on response
 
 app.add_middleware(RequestIDMiddleware)
@@ -103,6 +83,15 @@ app.include_router(admin.router,     prefix="/v1/admin",     tags=["admin"])
 @app.get("/health", tags=["system"])
 async def health() -> dict:
     return {"status": "ok", "version": settings.app_version, "environment": settings.environment}
+
+
+# ── OAuth discovery at the server root (RFC 8414 §3 / MCP spec 2025-03-26) ───
+# Claude probes /.well-known/oauth-authorization-server at the origin first.
+# The actual metadata is served by the mcp library at /mcp/.well-known/…
+# so we redirect there.  Claude follows the redirect per RFC 8414 §3.1.
+@app.get("/.well-known/oauth-authorization-server", include_in_schema=False)
+async def oauth_discovery_redirect() -> RedirectResponse:
+    return RedirectResponse("/mcp/.well-known/oauth-authorization-server", status_code=302)
 
 
 # ── MCP server — mounted last so REST routes always take precedence ────────────
