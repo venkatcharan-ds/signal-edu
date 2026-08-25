@@ -32,8 +32,8 @@ class Settings(BaseSettings):
 
     # ── Gemini ────────────────────────────────────────────────────────────────
     gemini_api_key: str
-    gemini_model_capability: str = "gemini-2.5-pro"
-    gemini_model_recommendation: str = "gemini-2.5-flash"
+    gemini_model_capability: str = "gemini-3.1-pro-preview"
+    gemini_model_recommendation: str = "gemini-2.5-flash-preview-05-20"
 
     # ── Frontend ──────────────────────────────────────────────────────────────
     frontend_url: str = "http://localhost:3000"

@@ -67,7 +67,7 @@ async def run_analysis(
                     await _set_status(
                         db2, job_id,
                         status="failed",
-                        step=str(failure_exc)[:200],
+                        step=str(failure_exc)[:100],
                         pct=0,
                         error=str(failure_exc),
                     )
