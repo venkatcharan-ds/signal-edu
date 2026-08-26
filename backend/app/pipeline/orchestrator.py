@@ -90,64 +90,64 @@ async def run_analysis(
 
     failure_exc: Exception | None = None
 
+    # No outer transaction — _set_status() commits each stage update so the
+    # SSE poller (a separate DB session) can see live progress in real time.
     async with session_factory() as db:
-        async with db.begin():
-            try:
-                await asyncio.wait_for(
-                    _run(job_id, db, bound),
-                    timeout=settings.analysis_timeout_seconds,
-                )
-            except Exception as exc:
-                bound.exception("pipeline.failed", error=str(exc))
-                failure_exc = exc
+        try:
+            await asyncio.wait_for(
+                _run(job_id, db, bound),
+                timeout=settings.analysis_timeout_seconds,
+            )
+        except Exception as exc:
+            bound.exception("pipeline.failed", error=str(exc))
+            failure_exc = exc
+        # Session closes here; any uncommitted autobegin transaction is rolled back.
 
     if failure_exc is not None:
         try:
             async with session_factory() as db2:
-                async with db2.begin():
-                    job = await db2.get(AnalysisJob, job_id)
-                    retry_count = job.retry_count if job else settings.max_job_retries
+                job = await db2.get(AnalysisJob, job_id)
+                retry_count = job.retry_count if job else settings.max_job_retries
 
-                    if _is_retryable(failure_exc) and retry_count < settings.max_job_retries:
-                        backoff = _backoff_seconds(retry_count)
-                        next_retry = datetime.now(timezone.utc) + timedelta(seconds=backoff)
-                        bound.warning(
-                            "pipeline.retry_scheduled",
-                            attempt=retry_count + 1,
-                            max=settings.max_job_retries,
-                            backoff_s=backoff,
+                if _is_retryable(failure_exc) and retry_count < settings.max_job_retries:
+                    backoff = _backoff_seconds(retry_count)
+                    next_retry = datetime.now(timezone.utc) + timedelta(seconds=backoff)
+                    bound.warning(
+                        "pipeline.retry_scheduled",
+                        attempt=retry_count + 1,
+                        max=settings.max_job_retries,
+                        backoff_s=backoff,
+                    )
+                    await db2.execute(
+                        update(AnalysisJob)
+                        .where(AnalysisJob.id == job_id)
+                        .values(
+                            status="queued",
+                            current_step=f"Retrying (attempt {retry_count + 1} of {settings.max_job_retries})…",
+                            progress_pct=0,
+                            claimed_at=None,
+                            worker_id=None,
+                            retry_count=retry_count + 1,
+                            next_retry_at=next_retry,
                         )
-                        await db2.execute(
-                            update(AnalysisJob)
-                            .where(AnalysisJob.id == job_id)
-                            .values(
-                                status="queued",
-                                current_step=f"Retrying (attempt {retry_count + 1} of {settings.max_job_retries})…",
-                                progress_pct=0,
-                                claimed_at=None,
-                                worker_id=None,
-                                retry_count=retry_count + 1,
-                                next_retry_at=next_retry,
-                            )
-                        )
-                    else:
-                        bound.error("pipeline.final_failure", retries=retry_count)
-                        await _set_status(
-                            db2, job_id,
+                    )
+                    await db2.commit()
+                else:
+                    bound.error("pipeline.final_failure", retries=retry_count)
+                    await db2.execute(
+                        update(AnalysisJob)
+                        .where(AnalysisJob.id == job_id)
+                        .values(
                             status="failed",
-                            step=str(failure_exc)[:100],
-                            pct=0,
-                            error=str(failure_exc),
+                            current_step=str(failure_exc)[:100],
+                            progress_pct=0,
+                            error_message=str(failure_exc),
+                            claimed_at=None,
+                            worker_id=None,
+                            completed_at=datetime.now(timezone.utc),
                         )
-                        await db2.execute(
-                            update(AnalysisJob)
-                            .where(AnalysisJob.id == job_id)
-                            .values(
-                                claimed_at=None,
-                                worker_id=None,
-                                completed_at=datetime.now(timezone.utc),
-                            )
-                        )
+                    )
+                    await db2.commit()
         except Exception as db_exc:
             bound.exception("pipeline.status_update_failed", error=str(db_exc))
 
@@ -325,12 +325,14 @@ async def _run(
         pct=100,
         completed_at=datetime.now(timezone.utc),
     )
-    # Clear worker claim fields on success
+    # Clear worker claim fields — committed separately so the write is durable
+    # even though _set_status already committed the 'complete' status above.
     await db.execute(
         update(AnalysisJob)
         .where(AnalysisJob.id == job_id)
         .values(claimed_at=None, worker_id=None)
     )
+    await db.commit()
     bound.info("pipeline.complete")
 
 
@@ -358,4 +360,4 @@ async def _set_status(
         .where(AnalysisJob.id == job_id)
         .values(**values)
     )
-    await db.flush()
+    await db.commit()
