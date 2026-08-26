@@ -25,6 +25,7 @@ class AnalysisProgressEvent(BaseModel):
     step: str
     label: str
     progress: int
+    queue_position: int = 0   # 0 = not queued; N = position in queue (1-indexed)
     detail: Optional[str] = None
     error: Optional[str] = None
 

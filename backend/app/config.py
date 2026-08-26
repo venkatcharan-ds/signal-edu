@@ -45,6 +45,12 @@ class Settings(BaseSettings):
     # ── Rate limiting ────────────────────────────────────────────────────────
     daily_analysis_limit: int = 3       # Max analyses per user per calendar day (UTC)
 
+    # ── Worker / queue ────────────────────────────────────────────────────────
+    max_concurrent_jobs: int = 2        # Max simultaneous pipelines per worker process
+    max_job_retries: int = 3            # Max retry attempts before marking a job failed
+    job_claim_timeout_seconds: int = 600  # A claimed job older than this is considered stale
+    worker_poll_interval_seconds: float = 2.0  # Idle poll interval when no jobs are waiting
+
     # ── Admin ─────────────────────────────────────────────────────────────────
     admin_api_key: str = ""             # Set in production; left blank = admin disabled
 

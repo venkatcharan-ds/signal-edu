@@ -1,7 +1,7 @@
 """
 SIGNAL pipeline orchestrator.
 
-Runs all five analysis stages as a single background task.
+Runs all five analysis stages as a single coroutine.
 Stage progress is written to analysis_jobs so the SSE endpoint can stream
 real-time status to the frontend.
 
@@ -11,11 +11,18 @@ Stage map:
   Stage 3 — Capability Engine  (ai_analysis,       55–80 %)
   Stage 4 — Gap Engine         (scoring,           80–90 %)  [deterministic]
   Stage 5 — Recommendation     (scoring,           90–100 %)
+
+Retry model:
+  Retryable exceptions (Gemini 429, network timeouts, asyncio.TimeoutError)
+  are retried up to settings.max_job_retries times with exponential backoff.
+  Non-retryable exceptions (bad input, auth failures) fail immediately.
+  After max retries the job is marked failed.
 """
 from __future__ import annotations
 
+import asyncio
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from google import genai
 import structlog
@@ -36,14 +43,48 @@ from app.pipeline.storage import upsert_repositories
 log = structlog.get_logger()
 
 
+# ── Retry helpers ──────────────────────────────────────────────────────────────
+
+def _is_retryable(exc: Exception) -> bool:
+    """True for transient errors that warrant a retry (Gemini 429, timeouts, network)."""
+    if isinstance(exc, asyncio.TimeoutError):
+        return True
+    msg = str(exc).lower()
+    return any(
+        keyword in msg
+        for keyword in (
+            "429",
+            "resource exhausted",
+            "quota",
+            "rate limit",
+            "rateerror",
+            "timeout",
+            "connection",
+            "network",
+            "unavailable",
+            "503",
+            "502",
+        )
+    )
+
+
+def _backoff_seconds(retry_count: int) -> int:
+    """Exponential backoff: 30s, 60s, 120s for attempts 0, 1, 2."""
+    return 30 * (2 ** retry_count)
+
+
+# ── Public entry point ─────────────────────────────────────────────────────────
+
 async def run_analysis(
     job_id: uuid.UUID,
     session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
     """
-    Entry point called by FastAPI BackgroundTasks.
+    Entry point called by the background worker.
     Opens its own DB session — does NOT share the request session.
+    Handles retry logic and stale-job cleanup.
     """
+    settings = get_settings()
     bound = log.bind(job_id=str(job_id))
     bound.info("pipeline.start")
 
@@ -52,28 +93,66 @@ async def run_analysis(
     async with session_factory() as db:
         async with db.begin():
             try:
-                await _run(job_id, db, bound)
+                await asyncio.wait_for(
+                    _run(job_id, db, bound),
+                    timeout=settings.analysis_timeout_seconds,
+                )
             except Exception as exc:
                 bound.exception("pipeline.failed", error=str(exc))
                 failure_exc = exc
-        # db.begin().__aexit__ rolls back automatically if _run raised
 
-    # Record failure in a *fresh* session — the previous transaction may have
-    # been aborted (PostgreSQL InFailedSqlTransaction), so we can't reuse it.
     if failure_exc is not None:
         try:
             async with session_factory() as db2:
                 async with db2.begin():
-                    await _set_status(
-                        db2, job_id,
-                        status="failed",
-                        step=str(failure_exc)[:100],
-                        pct=0,
-                        error=str(failure_exc),
-                    )
+                    job = await db2.get(AnalysisJob, job_id)
+                    retry_count = job.retry_count if job else settings.max_job_retries
+
+                    if _is_retryable(failure_exc) and retry_count < settings.max_job_retries:
+                        backoff = _backoff_seconds(retry_count)
+                        next_retry = datetime.now(timezone.utc) + timedelta(seconds=backoff)
+                        bound.warning(
+                            "pipeline.retry_scheduled",
+                            attempt=retry_count + 1,
+                            max=settings.max_job_retries,
+                            backoff_s=backoff,
+                        )
+                        await db2.execute(
+                            update(AnalysisJob)
+                            .where(AnalysisJob.id == job_id)
+                            .values(
+                                status="queued",
+                                current_step=f"Retrying (attempt {retry_count + 1} of {settings.max_job_retries})…",
+                                progress_pct=0,
+                                claimed_at=None,
+                                worker_id=None,
+                                retry_count=retry_count + 1,
+                                next_retry_at=next_retry,
+                            )
+                        )
+                    else:
+                        bound.error("pipeline.final_failure", retries=retry_count)
+                        await _set_status(
+                            db2, job_id,
+                            status="failed",
+                            step=str(failure_exc)[:100],
+                            pct=0,
+                            error=str(failure_exc),
+                        )
+                        await db2.execute(
+                            update(AnalysisJob)
+                            .where(AnalysisJob.id == job_id)
+                            .values(
+                                claimed_at=None,
+                                worker_id=None,
+                                completed_at=datetime.now(timezone.utc),
+                            )
+                        )
         except Exception as db_exc:
             bound.exception("pipeline.status_update_failed", error=str(db_exc))
 
+
+# ── Internal pipeline ──────────────────────────────────────────────────────────
 
 async def _run(
     job_id: uuid.UUID,
@@ -116,10 +195,10 @@ async def _run(
 
     # ── Stage 2: Evidence Engine (stub — Phase 10) ─────────────────────────
     await _set_status(db, job_id, "evidence_extract", "Processing additional evidence", 45)
-    artifacts: list[ArtifactText] = []   # Phase 10 will populate from artifacts table
+    artifacts: list[ArtifactText] = []
     await _set_status(db, job_id, "evidence_extract", "Evidence ready", 55)
 
-    # ── Stage 3: Capability Engine (Claude Sonnet) ─────────────────────────
+    # ── Stage 3: Capability Engine ─────────────────────────────────────────
     await _set_status(db, job_id, "ai_analysis", "Running AI capability analysis", 60)
 
     capability_engine = CapabilityEngine(
@@ -135,7 +214,6 @@ async def _run(
         cap_applied=any(s.cap_applied for s in scores),
     )
 
-    # Build serialisable summaries for DB storage
     score_map     = {s.dimension: s for s in scores}
     te, pc, cq    = score_map["technical_execution"], score_map["problem_complexity"], score_map["communication_quality"]
 
@@ -165,7 +243,6 @@ async def _run(
     # ── Stage 4 + 5: Gap Engine + Recommendations ─────────────────────────
     await _set_status(db, job_id, "scoring", "Computing role gaps", 85)
 
-    # Derive context for the recommendation engine
     student_languages = [
         lang for lang, _ in sorted(
             signals.total_languages.items(), key=lambda x: x[1], reverse=True
@@ -183,9 +260,6 @@ async def _run(
     )
     gap_engine = GapEngine()
 
-    # We generate recommendations for the *most aspirational* role the student
-    # is closest to achieving — the role with the smallest total gap deficit.
-    # The profile_builder evaluates ALL roles for gap_analyses rows.
     from sqlalchemy import select as sa_select
     from app.models.role_template import RoleTemplate
 
@@ -195,7 +269,6 @@ async def _run(
     recommendations_by_role: dict = {}
 
     if all_roles:
-        # Find the target role: most role-ready (smallest sum of negative gaps)
         def _deficit(role: RoleTemplate) -> float:
             g = gap_engine.compute(
                 te_score=te.score, pc_score=pc.score, cq_score=cq.score,
@@ -251,6 +324,12 @@ async def _run(
         step="Profile ready",
         pct=100,
         completed_at=datetime.now(timezone.utc),
+    )
+    # Clear worker claim fields on success
+    await db.execute(
+        update(AnalysisJob)
+        .where(AnalysisJob.id == job_id)
+        .values(claimed_at=None, worker_id=None)
     )
     bound.info("pipeline.complete")
 

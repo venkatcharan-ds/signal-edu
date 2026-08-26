@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 
 _STATUSES = (
     "queued",
+    "claimed",
     "github_fetch",
     "evidence_extract",
     "ai_analysis",
@@ -41,11 +42,17 @@ class AnalysisJob(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
 
     # Pipeline progress
-    status:       Mapped[str]       = mapped_column(String(50),  nullable=False, server_default="queued")
+    status:       Mapped[str]        = mapped_column(String(50),  nullable=False, server_default="queued")
     current_step: Mapped[str | None] = mapped_column(String(100))
     progress_pct: Mapped[int]        = mapped_column(Integer, nullable=False, server_default="0")
 
     is_test: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+
+    # Durable queue fields
+    claimed_at:    Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    worker_id:     Mapped[str | None]      = mapped_column(String(100))
+    retry_count:   Mapped[int]             = mapped_column(Integer, nullable=False, server_default="0")
+    next_retry_at: Mapped[datetime]        = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     # Populated on failure
     error_message: Mapped[str | None] = mapped_column(Text)

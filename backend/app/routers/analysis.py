@@ -1,5 +1,6 @@
 """
-Analysis router — triggers the 5-stage capability pipeline and streams progress.
+Analysis router — enqueues pipeline jobs and streams progress.
+Job execution is handled exclusively by the background worker service.
 """
 from __future__ import annotations
 
@@ -8,7 +9,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 import structlog
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,14 +19,13 @@ from app.core.deps import get_current_user
 from app.database import AsyncSessionLocal, get_db
 from app.models.analysis_job import AnalysisJob
 from app.models.user import User
-from app.pipeline.orchestrator import run_analysis
 from app.schemas.analysis import AnalysisJobResponse, AnalysisProgressEvent, QuotaResponse
 
 log = structlog.get_logger()
 router = APIRouter()
 
-# Statuses that indicate a job is actively running (blocks a new start)
-_ACTIVE_STATUSES = ("queued", "github_fetch", "evidence_extract", "ai_analysis", "scoring")
+# Active statuses — any of these means the user already has a job in flight
+_ACTIVE_STATUSES = ("queued", "claimed", "github_fetch", "evidence_extract", "ai_analysis", "scoring")
 
 # SSE tuning
 _POLL_INTERVAL_S = 1.5
@@ -47,7 +47,7 @@ async def _get_quota(db: AsyncSession, user: User) -> QuotaResponse:
         select(func.count(AnalysisJob.id)).where(
             AnalysisJob.user_id == user.id,
             AnalysisJob.started_at >= today,
-            AnalysisJob.is_test == False,  # noqa: E712 — SQLAlchemy requires == not `is`
+            AnalysisJob.is_test == False,  # noqa: E712
         )
     )
     used_today = used_result.scalar_one()
@@ -87,17 +87,16 @@ async def get_quota(
 @router.post("/start", response_model=AnalysisJobResponse)
 async def start_analysis(
     response: Response,
-    background_tasks: BackgroundTasks,
     test: bool = False,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> AnalysisJob:
     """
-    Create an AnalysisJob, enqueue the pipeline as a background task, and
-    return the job ID immediately.  Poll /status/{job_id} for real-time progress.
+    Create an AnalysisJob and enqueue it for the background worker.
+    Returns the job ID immediately — poll /status/{job_id} for progress.
 
     Rate limits:
-      - Only one concurrent analysis per user at a time (applies to test runs too).
+      - Only one concurrent analysis per user at a time (queued, claimed, or running).
       - Maximum daily_analysis_limit analyses per user per calendar day (UTC).
         Test runs (test=true) are exempt from the daily quota but require
         is_super_admin=true on the user account.
@@ -170,16 +169,13 @@ async def start_analysis(
     job = AnalysisJob(
         user_id=user.id,
         status="queued",
-        current_step="Queued — waiting to start",
+        current_step="Queued — waiting for a worker",
         progress_pct=0,
         is_test=test,
     )
     db.add(job)
     await db.flush()
-    # Commit NOW so the row is visible to the background task's separate session.
-    # BackgroundTasks run after the HTTP response is sent but before get_db's
-    # post-yield commit() fires — without this explicit commit the background
-    # task opens a new READ COMMITTED connection and finds no row.
+    # Commit NOW so the worker's separate session can see the row immediately.
     await db.commit()
     log.info(
         "analysis.queued",
@@ -193,9 +189,6 @@ async def start_analysis(
     response.headers["X-RateLimit-Limit"] = str(limit)
     response.headers["X-RateLimit-Remaining"] = str(remaining_after)
 
-    # Schedule the pipeline — it opens its own session via AsyncSessionLocal
-    background_tasks.add_task(run_analysis, job.id, AsyncSessionLocal)
-
     return job
 
 
@@ -208,6 +201,7 @@ async def analysis_status(
     """
     Server-Sent Events stream of analysis pipeline progress.
     Polls the DB every _POLL_INTERVAL_S seconds until the job is terminal.
+    Includes queue_position when the job is waiting to be picked up.
     """
     result = await db.execute(
         select(AnalysisJob).where(
@@ -234,12 +228,31 @@ async def analysis_status(
                 ))
                 break
 
-            if row.progress_pct != last_pct:
+            queue_position = 0
+            if row.status == "queued":
+                async with AsyncSessionLocal() as pos_db:
+                    pos_result = await pos_db.execute(
+                        select(func.count(AnalysisJob.id)).where(
+                            AnalysisJob.status == "queued",
+                            AnalysisJob.next_retry_at <= datetime.now(timezone.utc),
+                            AnalysisJob.started_at < row.started_at,
+                        )
+                    )
+                    queue_position = pos_result.scalar_one() + 1
+
+            if row.progress_pct != last_pct or queue_position > 0:
                 last_pct = row.progress_pct
+
+                if row.status == "queued":
+                    label = f"Waiting — position {queue_position} in queue"
+                else:
+                    label = row.current_step or row.status
+
                 event = AnalysisProgressEvent(
                     step=row.status,
-                    label=row.current_step or row.status,
+                    label=label,
                     progress=row.progress_pct,
+                    queue_position=queue_position,
                     error=row.error_message if row.status == "failed" else None,
                 )
                 yield _sse(event)
