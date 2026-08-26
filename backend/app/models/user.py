@@ -50,7 +50,7 @@ class User(Base):
         JSONB, nullable=False, server_default="[]"
     )
 
-    is_super_admin: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    is_super_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
