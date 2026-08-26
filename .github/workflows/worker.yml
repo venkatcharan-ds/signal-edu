@@ -1,0 +1,58 @@
+name: Analysis Worker
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+# One runner at a time. If a run is still active when the next schedule fires,
+# the new run waits (cancel-in-progress: false) so in-flight jobs aren't torn down.
+concurrency:
+  group: signal-worker
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  worker:
+    name: Process analysis queue
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # Run the worker for up to 250 s (covers the 240 s analysis timeout plus
+      # startup overhead). The worker loops indefinitely, so the bash timeout
+      # provides the bounded exit. Exit code from timeout (124) is swallowed by
+      # || true so the step passes whether the worker drained the queue or was
+      # stopped by the clock.
+      - name: Run worker
+        run: timeout 250 python -m app.worker.main || true
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_JWT_SECRET: ${{ secrets.SUPABASE_JWT_SECRET }}
+          # GitHub Actions forbids secrets named GITHUB_*. Store these as
+          # GH_CLIENT_ID / GH_CLIENT_SECRET in repo Settings → Secrets, then
+          # map them to the env var names the app expects.
+          GITHUB_CLIENT_ID: ${{ secrets.GH_CLIENT_ID }}
+          GITHUB_CLIENT_SECRET: ${{ secrets.GH_CLIENT_SECRET }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          ENVIRONMENT: ${{ secrets.ENVIRONMENT }}
+          DEBUG: ${{ secrets.DEBUG }}
