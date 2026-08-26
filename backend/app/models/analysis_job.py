@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, func
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -44,6 +44,8 @@ class AnalysisJob(Base):
     status:       Mapped[str]       = mapped_column(String(50),  nullable=False, server_default="queued")
     current_step: Mapped[str | None] = mapped_column(String(100))
     progress_pct: Mapped[int]        = mapped_column(Integer, nullable=False, server_default="0")
+
+    is_test: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
 
     # Populated on failure
     error_message: Mapped[str | None] = mapped_column(Text)

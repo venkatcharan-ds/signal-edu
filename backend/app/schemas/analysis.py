@@ -14,6 +14,7 @@ class AnalysisJobResponse(BaseModel):
     current_step: Optional[str] = None
     progress_pct: int
     error_message: Optional[str] = None
+    is_test: bool = False
     started_at: datetime
     completed_at: Optional[datetime] = None
 

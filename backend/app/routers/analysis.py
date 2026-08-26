@@ -47,6 +47,7 @@ async def _get_quota(db: AsyncSession, user: User) -> QuotaResponse:
         select(func.count(AnalysisJob.id)).where(
             AnalysisJob.user_id == user.id,
             AnalysisJob.started_at >= today,
+            AnalysisJob.is_test == False,  # noqa: E712 — SQLAlchemy requires == not `is`
         )
     )
     used_today = used_result.scalar_one()
@@ -87,6 +88,7 @@ async def get_quota(
 async def start_analysis(
     response: Response,
     background_tasks: BackgroundTasks,
+    test: bool = False,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> AnalysisJob:
@@ -95,8 +97,10 @@ async def start_analysis(
     return the job ID immediately.  Poll /status/{job_id} for real-time progress.
 
     Rate limits:
-      - Only one concurrent analysis per user at a time.
+      - Only one concurrent analysis per user at a time (applies to test runs too).
       - Maximum daily_analysis_limit analyses per user per calendar day (UTC).
+        Test runs (test=true) are exempt from the daily quota but require
+        is_super_admin=true on the user account.
     """
     settings = get_settings()
 
@@ -106,7 +110,14 @@ async def start_analysis(
             detail="No GitHub token on file. Please sign out and sign in again.",
         )
 
-    # ── Check for an already-active job ────────────────────────────────────
+    # ── Gate test mode to super-admins only (backend-enforced) ──────────────
+    if test and not user.is_super_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="Developer test mode is not authorized for this account.",
+        )
+
+    # ── Check for an already-active job (applies to all runs, including test) ─
     active_result = await db.execute(
         select(AnalysisJob.id)
         .where(
@@ -126,30 +137,34 @@ async def start_analysis(
             },
         )
 
-    # ── Check daily quota ────────────────────────────────────────────────────
+    # ── Check daily quota (skipped for authorised test runs) ─────────────────
     today = _today_start_utc()
-    used_result = await db.execute(
-        select(func.count(AnalysisJob.id)).where(
-            AnalysisJob.user_id == user.id,
-            AnalysisJob.started_at >= today,
-        )
-    )
-    used_today = used_result.scalar_one()
     limit = settings.daily_analysis_limit
+    used_today = 0
 
-    if used_today >= limit:
-        tomorrow = today + timedelta(days=1)
-        retry_after = int((tomorrow - datetime.now(timezone.utc)).total_seconds())
-        raise HTTPException(
-            status_code=429,
-            detail=f"Daily analysis limit reached ({limit}/day). Quota resets at midnight UTC.",
-            headers={
-                "Retry-After": str(retry_after),
-                "X-RateLimit-Limit": str(limit),
-                "X-RateLimit-Remaining": "0",
-                "X-RateLimit-Reset": str(int(tomorrow.timestamp())),
-            },
+    if not test:
+        used_result = await db.execute(
+            select(func.count(AnalysisJob.id)).where(
+                AnalysisJob.user_id == user.id,
+                AnalysisJob.started_at >= today,
+                AnalysisJob.is_test == False,  # noqa: E712
+            )
         )
+        used_today = used_result.scalar_one()
+
+        if used_today >= limit:
+            tomorrow = today + timedelta(days=1)
+            retry_after = int((tomorrow - datetime.now(timezone.utc)).total_seconds())
+            raise HTTPException(
+                status_code=429,
+                detail=f"Daily analysis limit reached ({limit}/day). Quota resets at midnight UTC.",
+                headers={
+                    "Retry-After": str(retry_after),
+                    "X-RateLimit-Limit": str(limit),
+                    "X-RateLimit-Remaining": "0",
+                    "X-RateLimit-Reset": str(int(tomorrow.timestamp())),
+                },
+            )
 
     # ── Create and enqueue the job ───────────────────────────────────────────
     job = AnalysisJob(
@@ -157,6 +172,7 @@ async def start_analysis(
         status="queued",
         current_step="Queued — waiting to start",
         progress_pct=0,
+        is_test=test,
     )
     db.add(job)
     await db.flush()
@@ -165,10 +181,15 @@ async def start_analysis(
     # post-yield commit() fires — without this explicit commit the background
     # task opens a new READ COMMITTED connection and finds no row.
     await db.commit()
-    log.info("analysis.queued", job_id=str(job.id), user=user.github_username)
+    log.info(
+        "analysis.queued",
+        job_id=str(job.id),
+        user=user.github_username,
+        test=test,
+    )
 
-    # Attach quota headers to the 202 response
-    remaining_after = max(0, limit - (used_today + 1))
+    # Attach quota headers to the response (reflects real-quota state only)
+    remaining_after = max(0, limit - (used_today + (0 if test else 1)))
     response.headers["X-RateLimit-Limit"] = str(limit)
     response.headers["X-RateLimit-Remaining"] = str(remaining_after)
 
