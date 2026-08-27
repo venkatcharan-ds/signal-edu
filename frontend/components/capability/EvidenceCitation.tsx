@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, GitBranch, FileText, GitCommit, Workflow, Container, Code2, ExternalLink } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, asFiniteNumber } from "@/lib/utils";
 import type { EvidenceCitation as EvidenceCitationType } from "@/types/signal";
 
 interface Props {
@@ -29,8 +29,9 @@ export function EvidenceCitation({ citation, compact = false }: Props) {
   const [expanded, setExpanded] = useState(false);
   const meta = ARTIFACT_META[citation.artifact_type ?? ""] ?? DEFAULT_META;
   const Icon = meta.icon;
+  const scoreContrib = asFiniteNumber(citation.score_contribution);
 
-  const hasDetails = !!(citation.artifact_ref || citation.score_contribution != null);
+  const hasDetails = !!(citation.artifact_ref || scoreContrib != null);
 
   return (
     <div
@@ -83,9 +84,9 @@ export function EvidenceCitation({ citation, compact = false }: Props) {
                   {citation.artifact_ref}
                 </span>
               )}
-              {citation.score_contribution != null && citation.score_contribution > 0 && (
+              {scoreContrib != null && scoreContrib > 0 && (
                 <span className="ml-auto text-[11px] text-signal shrink-0">
-                  +{citation.score_contribution.toFixed(2)} pts
+                  +{scoreContrib.toFixed(2)} pts
                 </span>
               )}
             </div>

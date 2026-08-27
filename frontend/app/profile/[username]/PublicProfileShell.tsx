@@ -15,7 +15,7 @@ import {
   type PublicProfile,
 } from "@/types/signal";
 import { Share2, ExternalLink, UserX, Zap } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, asFiniteNumber } from "@/lib/utils";
 
 const DIMENSIONS: Dimension[] = [
   "technical_execution",
@@ -160,7 +160,7 @@ export function PublicProfileShell({ username, data }: Props) {
           </FadeUp>
           <Stagger className="grid sm:grid-cols-3 gap-3">
             {DIMENSIONS.map((dim) => {
-              const score = profile[dim as keyof typeof profile] as number | null;
+              const score = asFiniteNumber(profile[dim as keyof typeof profile] as number | null);
               if (score == null) return null;
               const band = SCORE_BAND(score);
               return (

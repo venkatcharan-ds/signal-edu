@@ -1,4 +1,5 @@
 // Core SIGNAL domain types — shared across all components
+import { asFiniteNumber } from "@/lib/utils";
 
 export type Dimension = "technical_execution" | "problem_complexity" | "communication_quality";
 
@@ -128,7 +129,9 @@ export const SCORE_BAND_LABEL: Record<string, string> = {
 };
 
 export function signalComposite(profile: Pick<CapabilityProfile, "technical_execution" | "problem_complexity" | "communication_quality">): number | null {
-  const { technical_execution: te, problem_complexity: pc, communication_quality: cq } = profile;
+  const te = asFiniteNumber(profile.technical_execution);
+  const pc = asFiniteNumber(profile.problem_complexity);
+  const cq = asFiniteNumber(profile.communication_quality);
   if (te == null || pc == null || cq == null) return null;
   return Math.round(((te + pc + cq) / 3) * 10) / 10;
 }

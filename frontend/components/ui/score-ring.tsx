@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
+import { asFiniteNumber } from "@/lib/utils";
 
 interface ScoreRingProps {
   score: number | null;
@@ -12,13 +13,14 @@ interface ScoreRingProps {
 }
 
 export function ScoreRing({
-  score,
+  score: scoreProp,
   size = 160,
   strokeWidth = 10,
   label,
   sublabel,
   className = "",
 }: ScoreRingProps) {
+  const score = asFiniteNumber(scoreProp);
   const R   = (size - strokeWidth * 2) / 2;
   const C   = 2 * Math.PI * R;
   const pct = score != null ? score / 9 : 0;
@@ -111,7 +113,7 @@ export function ScoreRing({
 
 // Mini horizontal bar variant for dimension rows
 export function ScoreBar({
-  score,
+  score: scoreProp,
   max = 9,
   color,
 }: {
@@ -119,6 +121,7 @@ export function ScoreBar({
   max?: number;
   color?: string;
 }) {
+  const score = asFiniteNumber(scoreProp);
   const pct = score != null ? (score / max) * 100 : 0;
   const barColor = color ?? (
     score == null ? undefined

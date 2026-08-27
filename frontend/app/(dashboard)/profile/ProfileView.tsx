@@ -13,7 +13,7 @@ import { useProfile } from "@/lib/hooks/useProfile";
 import { signalComposite, DIMENSION_LABELS, type Dimension } from "@/types/signal";
 import { Share2, ExternalLink, Zap, Code2, Target, MessageSquare } from "lucide-react";
 import Link from "next/link";
-import { cn } from "@/lib/utils";
+import { cn, asFiniteNumber } from "@/lib/utils";
 
 const DIMENSIONS: Dimension[] = ["technical_execution", "problem_complexity", "communication_quality"];
 
@@ -112,7 +112,7 @@ export function ProfileView() {
             {/* Dimension bars */}
             <div className="flex-1 space-y-5">
               {DIMENSIONS.map((dim) => {
-                const score = profile[dim as keyof typeof profile] as number | null;
+                const score = asFiniteNumber(profile[dim as keyof typeof profile] as number | null);
                 const Icon = DIM_ICON[dim];
                 return (
                   <div key={dim} className="space-y-2">
@@ -200,8 +200,8 @@ export function ProfileView() {
                 >
                   <CapabilityScoreCard
                     dimension={dim}
-                    score={profile[dim as keyof typeof profile] as number | null}
-                    confidence={profile[CONFIDENCE_KEY[dim] as keyof typeof profile] as number | null}
+                    score={asFiniteNumber(profile[dim as keyof typeof profile] as number | null)}
+                    confidence={asFiniteNumber(profile[CONFIDENCE_KEY[dim] as keyof typeof profile] as number | null)}
                     percentile={null}
                     narrative={profile[NARRATIVE_KEY[dim] as keyof typeof profile] as string | null}
                   />

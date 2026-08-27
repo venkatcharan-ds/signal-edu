@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import { Badge } from "@/components/ui/badge";
 import { ScoreBar } from "@/components/ui/score-ring";
 import { DIMENSION_LABELS, SCORE_BAND, SCORE_BAND_LABEL, type Dimension } from "@/types/signal";
-import { cn } from "@/lib/utils";
+import { cn, asFiniteNumber } from "@/lib/utils";
 import { Code2, Target, MessageSquare } from "lucide-react";
 
 interface Props {
@@ -33,7 +33,10 @@ const DIM_COLOR: Record<Dimension, string> = {
   communication_quality: "text-emerald-400",
 };
 
-export function CapabilityScoreCard({ dimension, score, confidence, percentile, narrative }: Props) {
+export function CapabilityScoreCard({ dimension, score: scoreProp, confidence: confidenceProp, percentile: percentileProp, narrative }: Props) {
+  const score      = asFiniteNumber(scoreProp);
+  const confidence = asFiniteNumber(confidenceProp);
+  const percentile = asFiniteNumber(percentileProp);
   const label  = DIMENSION_LABELS[dimension];
   const band   = score != null ? SCORE_BAND(score) : null;
   const Icon   = DIM_ICON[dimension];

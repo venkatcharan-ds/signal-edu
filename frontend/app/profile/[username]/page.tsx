@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { PublicProfileShell } from "./PublicProfileShell";
 import type { PublicProfile } from "@/types/signal";
+import { asFiniteNumber } from "@/lib/utils";
 
 interface Props {
   params: Promise<{ username: string }>;
@@ -28,9 +29,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const displayName = data?.full_name ?? `@${username}`;
   const score = data?.profile
     ? ((
-        (data.profile.technical_execution ?? 0) +
-        (data.profile.problem_complexity ?? 0) +
-        (data.profile.communication_quality ?? 0)
+        (asFiniteNumber(data.profile.technical_execution) ?? 0) +
+        (asFiniteNumber(data.profile.problem_complexity) ?? 0) +
+        (asFiniteNumber(data.profile.communication_quality) ?? 0)
       ) / 3).toFixed(1)
     : null;
 

@@ -15,9 +15,10 @@ import {
   TrendingUp, TrendingDown, Minus,
 } from "lucide-react";
 import Link from "next/link";
-import { cn } from "@/lib/utils";
+import { cn, asFiniteNumber } from "@/lib/utils";
 
-function GapValue({ value }: { value: number | null }) {
+function GapValue({ value: valueProp }: { value: number | null }) {
+  const value = asFiniteNumber(valueProp);
   if (value == null) return <span className="text-muted-foreground/40">—</span>;
   const isPositive = value >= 0;
   const abs = Math.abs(value).toFixed(1);
@@ -28,7 +29,8 @@ function GapValue({ value }: { value: number | null }) {
   );
 }
 
-function DimGapBar({ value, threshold }: { value: number | null; threshold: number }) {
+function DimGapBar({ value: valueProp, threshold }: { value: number | null; threshold: number }) {
+  const value = asFiniteNumber(valueProp);
   if (value == null) return null;
   const score = value + threshold; // gap = score − threshold → score = gap + threshold
   const isPositive = value >= 0;

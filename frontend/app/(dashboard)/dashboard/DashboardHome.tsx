@@ -10,7 +10,7 @@ import { useAnalysisHistory } from "@/lib/hooks/useAnalysisHistory";
 import { useGapAnalyses } from "@/lib/hooks/useGapAnalyses";
 import { signalComposite, DIMENSION_LABELS, type Dimension } from "@/types/signal";
 import { Zap, Target, Lightbulb, ArrowRight, CheckCircle, Clock, AlertCircle, Loader2 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, asFiniteNumber } from "@/lib/utils";
 
 const DIMS: Dimension[] = [
   "technical_execution",
@@ -84,7 +84,7 @@ export function DashboardHome({ firstName }: Props) {
                 {/* Dimension breakdown */}
                 <div className="flex-1 space-y-5">
                   {DIMS.map((key) => {
-                    const score = profile[key as keyof typeof profile] as number | null;
+                    const score = asFiniteNumber(profile[key as keyof typeof profile] as number | null);
                     return (
                       <div key={key} className="space-y-2">
                         <div className="flex items-center justify-between">
