@@ -37,6 +37,7 @@ from app.pipeline.evidence_engine import ArtifactText
 from app.pipeline.gap_engine import GapEngine
 from app.pipeline.github_engine import GitHubEngine, UserSignals
 from app.pipeline.profile_builder import build_profile
+from app.pipeline.project_intelligence_engine import ProjectIntelligenceEngine
 from app.pipeline.recommendation_engine import RecommendationEngine
 from app.pipeline.storage import upsert_repositories
 
@@ -239,6 +240,18 @@ async def _run(
         "communication_quality": {"narrative": cq.narrative, "ai_score": cq.ai_component_raw},
         "verified_capabilities": verified_capabilities,
     }
+
+    # ── Stage 3.5: Project Intelligence ───────────────────────────────────
+    await _set_status(db, job_id, "ai_analysis", "Analyzing individual projects", 82)
+
+    project_engine = ProjectIntelligenceEngine(
+        client=gemini_client,
+        model=settings.gemini_model_capability,
+    )
+    project_intelligence = await project_engine.analyze(signals)
+    raw_ai_response["project_intelligence"] = project_intelligence
+
+    bound.info("stage3_5_complete", projects=len(project_intelligence))
 
     # ── Stage 4 + 5: Gap Engine + Recommendations ─────────────────────────
     await _set_status(db, job_id, "scoring", "Computing role gaps", 85)

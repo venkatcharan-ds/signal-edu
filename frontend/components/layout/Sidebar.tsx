@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
-import { LayoutDashboard, User, Zap, Target, Lightbulb, Settings, LogOut } from "lucide-react";
+import { LayoutDashboard, User, Zap, Target, Lightbulb, Settings, LogOut, GitBranch } from "lucide-react";
 import { signOut } from "@/lib/auth";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
@@ -12,6 +12,7 @@ const NAV_ITEMS = [
   { href: "/dashboard",       label: "Dashboard",       icon: LayoutDashboard },
   { href: "/analysis",        label: "Analysis",        icon: Zap             },
   { href: "/profile",         label: "Profile",         icon: User            },
+  { href: "/projects",        label: "Projects",        icon: GitBranch       },
   { href: "/gaps",            label: "Gaps",            icon: Target          },
   { href: "/recommendations", label: "Recommendations", icon: Lightbulb       },
   { href: "/settings",        label: "Settings",        icon: Settings        },

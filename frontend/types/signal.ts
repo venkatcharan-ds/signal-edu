@@ -102,6 +102,63 @@ export interface GapAnalysis {
   created_at?: string;
 }
 
+// ── Project Intelligence types ────────────────────────────────────────────────
+
+export type CapabilityStatus = "demonstrated" | "inferred" | "claimed" | "not_demonstrated";
+export type AcademicVsRealworld = "academic" | "real_world" | "mixed";
+export type ProjectLevel = "Beginner" | "Intermediate" | "Advanced";
+export type RoleRelevance = "high" | "medium" | "low" | "none";
+
+export interface ProjectTechnology {
+  name: string;
+  status: CapabilityStatus;
+  evidence: string;
+}
+
+export interface ProjectDimensionScores {
+  code_quality: number;
+  documentation: number;
+  architecture: number;
+  testing: number;
+  deployment_readiness: number;
+  complexity: number;
+  real_world_impact: number;
+}
+
+export interface ProjectRepo {
+  repo_full_name: string;
+  summary: string;
+  classification: string;
+  level: ProjectLevel;
+  overall_score: number;
+  dimension_scores: ProjectDimensionScores;
+  academic_vs_realworld: AcademicVsRealworld;
+  primary_technologies: ProjectTechnology[];
+  role_relevance: Record<string, RoleRelevance>;
+  improvement_recommendations: string[];
+  // V2 fields — empty string/array for pre-V2 profiles
+  how_it_works: string;
+  capabilities_demonstrated: string[];
+  real_world_comparison: string;
+}
+
+export const PROJECT_DIMENSION_LABELS: Record<keyof ProjectDimensionScores, string> = {
+  code_quality:         "Code Quality",
+  documentation:        "Documentation",
+  architecture:         "Architecture",
+  testing:              "Testing",
+  deployment_readiness: "Deployment Readiness",
+  complexity:           "Complexity",
+  real_world_impact:    "Real-World Impact",
+};
+
+export const CAPABILITY_STATUS_LABELS: Record<CapabilityStatus, string> = {
+  demonstrated:      "Demonstrated",
+  inferred:          "Inferred",
+  claimed:           "Claimed",
+  not_demonstrated:  "Not Demonstrated",
+};
+
 // ── UI helpers ────────────────────────────────────────────────────────────────
 
 export const DIMENSION_LABELS: Record<Dimension, string> = {

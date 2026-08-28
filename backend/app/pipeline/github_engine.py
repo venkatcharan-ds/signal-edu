@@ -68,6 +68,11 @@ class RepositorySignals:
     has_ci:                bool      = False
     has_deployment_config: bool      = False
 
+    # Detected evidence files (paths that triggered each detection flag)
+    detected_test_files:   list[str] = field(default_factory=list)
+    detected_ci_files:     list[str] = field(default_factory=list)
+    detected_deploy_files: list[str] = field(default_factory=list)
+
     # Meta
     is_fork:  bool = False
     raw_data: dict = field(default_factory=dict)
@@ -168,7 +173,10 @@ class GitHubEngine:
                         pushed_at_str.replace("Z", "+00:00")
                     )
 
-                readme_words = len(readme_text.split()) if readme_text else 0
+                readme_words  = len(readme_text.split()) if readme_text else 0
+                _test_files   = self._match_tests(file_paths)
+                _ci_files     = self._match_ci(file_paths)
+                _deploy_files = self._match_deployment(file_paths)
 
                 return RepositorySignals(
                     repo_id     = repo["id"],
@@ -188,9 +196,12 @@ class GitHubEngine:
                     has_readme            = readme_text is not None,
                     readme_content        = readme_text,
                     readme_word_count     = readme_words,
-                    has_tests             = self._detect_tests(file_paths),
-                    has_ci                = self._detect_ci(file_paths),
-                    has_deployment_config = self._detect_deployment(file_paths),
+                    has_tests             = bool(_test_files),
+                    has_ci                = bool(_ci_files),
+                    has_deployment_config = bool(_deploy_files),
+                    detected_test_files   = _test_files,
+                    detected_ci_files     = _ci_files,
+                    detected_deploy_files = _deploy_files,
 
                     is_fork  = repo.get("fork", False),
                     raw_data = {
@@ -236,22 +247,27 @@ class GitHubEngine:
     # ── Pattern matchers ─────────────────────────────────────────────────────
 
     @staticmethod
-    def _detect_tests(paths: list[str]) -> bool:
-        lowered = [p.lower() for p in paths]
-        return any(
-            any(pat in p for pat in _TEST_PATTERNS)
-            for p in lowered
-        )
+    def _match_tests(paths: list[str]) -> list[str]:
+        matched = []
+        for p in paths:
+            if any(pat in p.lower() for pat in _TEST_PATTERNS):
+                matched.append(p)
+        return matched[:5]
 
     @staticmethod
-    def _detect_ci(paths: list[str]) -> bool:
-        lowered = [p.lower() for p in paths]
-        return any(
-            any(p.startswith(pat.lower()) or pat.lower() in p for pat in _CI_PATTERNS)
-            for p in lowered
-        )
+    def _match_ci(paths: list[str]) -> list[str]:
+        matched = []
+        for p in paths:
+            pl = p.lower()
+            if any(pl.startswith(pat.lower()) or pat.lower() in pl for pat in _CI_PATTERNS):
+                matched.append(p)
+        return matched[:5]
 
     @staticmethod
-    def _detect_deployment(paths: list[str]) -> bool:
-        basenames = {p.split("/")[-1].lower() for p in paths}
-        return any(pat.lower() in basenames for pat in _DEPLOY_PATTERNS)
+    def _match_deployment(paths: list[str]) -> list[str]:
+        matched = []
+        for p in paths:
+            basename = p.split("/")[-1].lower()
+            if any(pat.lower() == basename for pat in _DEPLOY_PATTERNS):
+                matched.append(p)
+        return matched[:5]

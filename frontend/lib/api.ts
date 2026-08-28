@@ -5,6 +5,7 @@ import type {
   AnalysisQuota,
   PublicProfile,
   GapAnalysis,
+  ProjectRepo,
 } from "@/types/signal";
 
 export class RateLimitError extends Error {
@@ -92,6 +93,9 @@ export const getMyProfile = () =>
 
 export const getMyGaps = () =>
   request<GapAnalysis[]>("/profiles/me/gaps");
+
+export const getMyProjects = () =>
+  request<ProjectRepo[]>("/profiles/me/projects");
 
 export const getPublicProfile = (username: string) =>
   request<PublicProfile>(`/profiles/${username}`);

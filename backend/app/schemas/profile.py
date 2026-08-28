@@ -119,3 +119,38 @@ class UpdateProfileRequest(BaseModel):
 
 class ResumeSkillsRequest(BaseModel):
     skills: list[str]
+
+
+# ── Project Intelligence schemas ──────────────────────────────────────────────
+
+class ProjectTechnologySchema(BaseModel):
+    name: str
+    status: str  # "demonstrated" | "inferred" | "claimed" | "not_demonstrated"
+    evidence: str
+
+
+class ProjectDimensionScoresSchema(BaseModel):
+    code_quality: float
+    documentation: float
+    architecture: float
+    testing: float
+    deployment_readiness: float
+    complexity: float
+    real_world_impact: float
+
+
+class ProjectRepoAnalysisSchema(BaseModel):
+    repo_full_name: str
+    summary: str
+    classification: str
+    level: str  # "Beginner" | "Intermediate" | "Advanced"
+    overall_score: float
+    dimension_scores: ProjectDimensionScoresSchema
+    academic_vs_realworld: str  # "academic" | "real_world" | "mixed"
+    primary_technologies: list[ProjectTechnologySchema] = []
+    role_relevance: dict[str, str] = {}  # role_slug -> "high" | "medium" | "low" | "none"
+    improvement_recommendations: list[str] = []
+    # V2 fields — default to empty so pre-V2 profiles degrade gracefully
+    how_it_works: str = ""
+    capabilities_demonstrated: list[str] = []
+    real_world_comparison: str = ""

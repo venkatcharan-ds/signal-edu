@@ -21,6 +21,7 @@ from app.models.user import User
 from app.schemas.profile import (
     CapabilityProfileResponse,
     GapAnalysisSchema,
+    ProjectRepoAnalysisSchema,
     PublicProfileResponse,
     RecommendationSchema,
     UpdateProfileRequest,
@@ -113,6 +114,42 @@ async def get_my_gaps(
             recommendations=recs,
         ))
     return output
+
+
+@router.get("/me/projects", response_model=list[ProjectRepoAnalysisSchema])
+async def get_my_projects(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> list[ProjectRepoAnalysisSchema]:
+    """
+    Project Intelligence — per-repository structured analysis from the latest profile.
+    Returns an empty list if the current profile pre-dates this feature.
+    """
+    result = await db.execute(
+        select(CapabilityProfile)
+        .where(
+            CapabilityProfile.user_id == user.id,
+            CapabilityProfile.is_current == True,  # noqa: E712
+        )
+        .order_by(CapabilityProfile.created_at.desc())
+        .limit(1)
+    )
+    profile: CapabilityProfile | None = result.scalar_one_or_none()
+    if profile is None or not profile.raw_ai_response:
+        return []
+
+    raw_projects = profile.raw_ai_response.get("project_intelligence", [])
+    if not isinstance(raw_projects, list):
+        return []
+
+    validated: list[ProjectRepoAnalysisSchema] = []
+    for item in raw_projects:
+        try:
+            validated.append(ProjectRepoAnalysisSchema.model_validate(item))
+        except Exception:
+            log.warning("projects.validation_failed", item=str(item)[:120])
+
+    return validated
 
 
 @router.patch("/me", response_model=dict)
