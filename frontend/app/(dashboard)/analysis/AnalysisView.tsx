@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -16,6 +16,13 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 
 type Stage = "idle" | "running" | "complete" | "failed" | "rate_limited";
+
+// Persists the active job across page refreshes so polling resumes automatically.
+const STORAGE_KEY = "signal_active_job_id";
+
+function safeStorage(fn: () => string | null): string | null {
+  try { return fn(); } catch { return null; }
+}
 
 function formatDate(iso: string) {
   return new Intl.RelativeTimeFormat("en", { numeric: "auto" }).format(
@@ -45,19 +52,63 @@ const STATUS_CLASS: Record<string, string> = {
 };
 
 export function AnalysisView() {
-  const [stage, setStage] = useState<Stage>("idle");
-  const [jobId, setJobId] = useState<string | null>(null);
-  const [rateLimitMsg, setRateLimitMsg] = useState<string>("");
-  const [retryAfterSecs, setRetryAfterSecs] = useState<number | null>(null);
+  // Restore from sessionStorage so a page refresh resumes polling
+  const [stage, setStage] = useState<Stage>(() => {
+    const stored = safeStorage(() => sessionStorage.getItem(STORAGE_KEY));
+    return stored ? "running" : "idle";
+  });
+  const [jobId, setJobId] = useState<string | null>(() =>
+    safeStorage(() => sessionStorage.getItem(STORAGE_KEY))
+  );
+  const [rateLimitMsg,    setRateLimitMsg]    = useState<string>("");
+  const [retryAfterSecs,  setRetryAfterSecs]  = useState<number | null>(null);
 
-  const { events, progress, isComplete, isFailed, latestLabel } = useAnalysisStatus(jobId);
+  const { events, progress, isComplete, isFailed, latestLabel, currentStep } =
+    useAnalysisStatus(jobId);
   const { history, isLoading: historyLoading, refresh } = useAnalysisHistory();
   const { quota, isLoading: quotaLoading, canStart, refresh: refreshQuota } = useAnalysisQuota();
+
+  // Track how long we've been in the queued state for the extended-wait message
+  const queueEnteredAt = useRef<number | null>(null);
+  const [longWait, setLongWait] = useState(false);
+
+  useEffect(() => {
+    if (currentStep === "queued") {
+      if (queueEnteredAt.current === null) queueEnteredAt.current = Date.now();
+      const timer = setInterval(() => {
+        if (queueEnteredAt.current && Date.now() - queueEnteredAt.current > 45_000) {
+          setLongWait(true);
+        }
+      }, 5_000);
+      return () => clearInterval(timer);
+    } else {
+      queueEnteredAt.current = null;
+      setLongWait(false);
+    }
+  }, [currentStep]);
+
+  // Transition to complete / failed once the SSE stream signals it
+  useEffect(() => {
+    if (isComplete && stage === "running") {
+      try { sessionStorage.removeItem(STORAGE_KEY); } catch {}
+      setStage("complete");
+      refresh();
+      refreshQuota();
+    }
+  }, [isComplete]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (isFailed && stage === "running") {
+      try { sessionStorage.removeItem(STORAGE_KEY); } catch {}
+      setStage("failed");
+    }
+  }, [isFailed]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleStart = async () => {
     setStage("running");
     try {
       const job = await startAnalysis();
+      try { sessionStorage.setItem(STORAGE_KEY, job.id); } catch {}
       setJobId(job.id);
       refreshQuota();
     } catch (err) {
@@ -71,10 +122,11 @@ export function AnalysisView() {
     }
   };
 
-  if (isComplete && stage === "running") { setStage("complete"); refresh(); refreshQuota(); }
-  if (isFailed   && stage === "running") setStage("failed");
-
   const buttonDisabled = !canStart || stage === "running" || quotaLoading;
+
+  // Derive queued / claimed states from SSE events
+  const isQueued  = currentStep === "queued";
+  const isClaimed = currentStep === "claimed";
 
   return (
     <div className="space-y-10">
@@ -122,12 +174,22 @@ export function AnalysisView() {
             {!quotaLoading && quota && (
               <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
                 <span>
-                  Daily quota: <span className="font-medium text-foreground">{quota.used_today}/{quota.limit}</span> used
+                  Daily quota:{" "}
+                  <span className="font-medium text-foreground">
+                    {quota.used_today}/{quota.limit}
+                  </span>{" "}
+                  used
                 </span>
-                <span className={cn(
-                  "font-medium",
-                  quota.remaining === 0 ? "text-red-400" : quota.remaining === 1 ? "text-amber-400" : "text-emerald-400"
-                )}>
+                <span
+                  className={cn(
+                    "font-medium",
+                    quota.remaining === 0
+                      ? "text-red-400"
+                      : quota.remaining === 1
+                      ? "text-amber-400"
+                      : "text-emerald-400"
+                  )}
+                >
                   {quota.remaining} remaining
                 </span>
               </div>
@@ -158,21 +220,72 @@ export function AnalysisView() {
             transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
             className="rounded-2xl border border-white/5 bg-card p-8 space-y-6"
           >
+            {/* Header — varies by queue state */}
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-full bg-signal-dim border border-signal/20 flex items-center justify-center">
-                <Zap className="w-4 h-4 text-signal animate-pulse" />
+                {isQueued
+                  ? <Clock className="w-4 h-4 text-muted-foreground animate-pulse" />
+                  : <Zap   className="w-4 h-4 text-signal animate-pulse" />
+                }
               </div>
               <div>
-                <p className="text-sm font-medium">Analyzing your GitHub...</p>
-                <p className="text-xs text-muted-foreground">Do not close this tab</p>
+                {isQueued ? (
+                  <>
+                    <p className="text-sm font-medium">Your analysis is queued</p>
+                    <p className="text-xs text-muted-foreground">Waiting for an analysis worker…</p>
+                  </>
+                ) : isClaimed ? (
+                  <>
+                    <p className="text-sm font-medium">Analysis worker started</p>
+                    <p className="text-xs text-muted-foreground">Beginning your analysis…</p>
+                  </>
+                ) : currentStep ? (
+                  <>
+                    <p className="text-sm font-medium">Analyzing your GitHub…</p>
+                    <p className="text-xs text-muted-foreground">Do not close this tab</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm font-medium">Connecting to analysis…</p>
+                    <p className="text-xs text-muted-foreground">Checking job status</p>
+                  </>
+                )}
               </div>
-              <span className="ml-auto text-sm font-semibold tabular-nums text-signal">{progress}%</span>
+              {!isQueued && (
+                <span className="ml-auto text-sm font-semibold tabular-nums text-signal">
+                  {progress}%
+                </span>
+              )}
             </div>
-            <Progress value={progress} className="h-1.5" />
-            {latestLabel && (
+
+            {/* Extended-wait notice */}
+            {isQueued && longWait && (
+              <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3">
+                <p className="text-xs text-amber-400">
+                  Your analysis is taking longer than expected. Your job is safely queued and will continue processing.
+                </p>
+              </div>
+            )}
+
+            {/* Position label from SSE */}
+            {isQueued && latestLabel && (
               <p className="text-xs text-muted-foreground">{latestLabel}</p>
             )}
-            <AnalysisProgress events={events} progress={progress} latestLabel={latestLabel} />
+
+            {/* Progress bar — only shown once analysis is actually running */}
+            {!isQueued && (
+              <>
+                <Progress value={progress} className="h-1.5" />
+                {latestLabel && (
+                  <p className="text-xs text-muted-foreground">{latestLabel}</p>
+                )}
+                <AnalysisProgress
+                  events={events}
+                  progress={progress}
+                  latestLabel={latestLabel}
+                />
+              </>
+            )}
           </motion.div>
         )}
 
@@ -249,7 +362,11 @@ export function AnalysisView() {
               <p className="font-medium">Analysis failed</p>
               <p className="text-sm text-muted-foreground">Something went wrong. Please try again.</p>
             </div>
-            <Button onClick={() => { setStage("idle"); setJobId(null); }} variant="outline" className="rounded-xl border-white/10">
+            <Button
+              onClick={() => { setStage("idle"); setJobId(null); }}
+              variant="outline"
+              className="rounded-xl border-white/10"
+            >
               Try again
             </Button>
           </motion.div>
@@ -260,23 +377,43 @@ export function AnalysisView() {
       {!historyLoading && history.length > 0 && (
         <FadeUp delay={0.1}>
           <div className="space-y-3">
-            <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-widest">History</h2>
+            <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-widest">
+              History
+            </h2>
             <div className="rounded-2xl border border-white/5 bg-card overflow-hidden divide-y divide-white/5">
               {history.map((job) => {
-                const Icon = STATUS_ICON[job.status] ?? Loader2;
-                const iconCn = STATUS_CLASS[job.status] ?? "text-signal";
+                const Icon    = STATUS_ICON[job.status] ?? Loader2;
+                const iconCn  = STATUS_CLASS[job.status] ?? "text-signal";
                 return (
                   <div key={job.id} className="flex items-center gap-4 px-5 py-3.5">
-                    <Icon className={cn("w-4 h-4 shrink-0", iconCn, job.status === "queued" && "animate-pulse")} />
+                    <Icon
+                      className={cn(
+                        "w-4 h-4 shrink-0",
+                        iconCn,
+                        job.status === "queued" && "animate-pulse"
+                      )}
+                    />
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-mono text-muted-foreground/70 truncate">{job.id.slice(0, 8)}…</p>
+                      <p className="text-xs font-mono text-muted-foreground/70 truncate">
+                        {job.id.slice(0, 8)}…
+                      </p>
                       {job.current_step && (
-                        <p className="text-[11px] text-muted-foreground/50 truncate">{job.current_step}</p>
+                        <p className="text-[11px] text-muted-foreground/50 truncate">
+                          {job.current_step}
+                        </p>
                       )}
                     </div>
                     <div className="text-right shrink-0">
-                      <p className="text-[11px] text-muted-foreground/50">{formatDate(job.started_at)}</p>
-                      <p className="text-[11px] font-medium capitalize" style={{ color: job.status === "complete" ? "var(--signal)" : undefined }}>
+                      <p className="text-[11px] text-muted-foreground/50">
+                        {formatDate(job.started_at)}
+                      </p>
+                      <p
+                        className="text-[11px] font-medium capitalize"
+                        style={{
+                          color:
+                            job.status === "complete" ? "var(--signal)" : undefined,
+                        }}
+                      >
                         {job.status}
                       </p>
                     </div>
@@ -290,7 +427,9 @@ export function AnalysisView() {
 
       {historyLoading && (
         <div className="space-y-2">
-          {[0,1,2].map(i => <Skeleton key={i} className="h-14 rounded-xl" />)}
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} className="h-14 rounded-xl" />
+          ))}
         </div>
       )}
     </div>

@@ -66,7 +66,9 @@ export interface AnalysisProgressEvent {
   step: string;
   label: string;
   progress: number;
+  queue_position: number;
   detail: string | null;
+  error: string | null;
 }
 
 export interface RoleTemplate {

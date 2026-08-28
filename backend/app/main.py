@@ -1,3 +1,5 @@
+import asyncio
+import uuid
 from contextlib import asynccontextmanager
 import structlog
 from fastapi import FastAPI, Request
@@ -10,10 +12,37 @@ from app.core.middleware import RequestIDMiddleware
 from app.database import AsyncSessionLocal, engine, Base
 from app.db.seed import seed_roles_if_empty
 from app.routers import auth, analysis, profiles, artifacts, admin
+from app.worker.poller import poll_loop
 
 configure_logging()
 log = structlog.get_logger()
 settings = get_settings()
+
+
+async def _embedded_worker(worker_id: str) -> None:
+    """
+    Run the job-queue poller inside the web process so jobs are picked up
+    immediately during a demo session without waiting for GitHub Actions.
+
+    Uses the same atomic FOR UPDATE SKIP LOCKED claim logic as the standalone
+    worker — safe to run alongside GitHub Actions and any future Render
+    Background Worker with no duplicate-processing risk.
+    """
+    bound = log.bind(worker_id=worker_id)
+    bound.info("embedded_worker.start")
+    try:
+        await poll_loop(
+            session_factory=AsyncSessionLocal,
+            worker_id=worker_id,
+            max_concurrent_jobs=settings.max_concurrent_jobs,
+            poll_interval_seconds=settings.worker_poll_interval_seconds,
+            claim_timeout_seconds=settings.job_claim_timeout_seconds,
+        )
+    except asyncio.CancelledError:
+        bound.info("embedded_worker.stopped")
+        raise
+    except Exception:
+        bound.exception("embedded_worker.crashed")
 
 
 @asynccontextmanager
@@ -36,7 +65,23 @@ async def lifespan(app: FastAPI):
                 if seeded:
                     log.info("signal.roles_seeded", count=seeded)
 
+    # Start embedded worker — runs alongside the web service so jobs are
+    # processed immediately without relying on GitHub Actions scheduling.
+    worker_id = f"web-{uuid.uuid4().hex[:8]}"
+    worker_task = asyncio.create_task(
+        _embedded_worker(worker_id),
+        name=f"embedded-worker-{worker_id}",
+    )
+
     yield
+
+    # Gracefully stop the embedded worker on shutdown
+    worker_task.cancel()
+    try:
+        await asyncio.wait_for(asyncio.shield(worker_task), timeout=5.0)
+    except (asyncio.CancelledError, asyncio.TimeoutError):
+        pass
+
     log.info("signal.shutdown")
     await engine.dispose()
 
