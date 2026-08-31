@@ -31,7 +31,7 @@ from app.pipeline.github_engine import UserSignals, RepositorySignals
 log = structlog.get_logger()
 
 _MAX_REPOS = 5
-_CALL_TIMEOUT = 45  # seconds — hard ceiling for this stage
+_CALL_TIMEOUT = 120  # seconds — hard ceiling for this stage
 
 # ── Gemini function-calling schema ────────────────────────────────────────────
 
